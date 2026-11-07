@@ -385,6 +385,20 @@ extent (mm), sha256 of each file. Every later run records the manifest hash.
   scored on our folds or test set. They may be used only for environment smoke tests.
 - Propensity estimates used to score fold k are fit on reports from the other folds
   (cross-fitting). Estimates used for the locked test set are fit on the development set only.
+- **Segmentation must not see the test set (added 2026-11-07).** The existing U-Mamba2 model
+  (`fold_all`) was trained on all of ToothFairy3 = every P/F/S scan, so it overlaps any test set
+  drawn from P/F/S. Order: (1) split approved → (2) retrain U-Mamba2 on TF3 labels of the
+  development P/F/S cases + the 5 TF3-only scans (P120, P121, P262, P263, P378), never on test
+  cases → (3) per-fold VLM LoRA. Inside the CV folds the segmentation model has seen the held-out
+  fold (development only; accepted at first); per-fold segmentation retraining decided at G3. The
+  old `fold_all` model is used only for non-evaluated purposes (e.g. rough checks on A).
+  Hand-drawn TF3 labels used as ground truth about the image (visibility, mask-vs-report, report
+  repair) are not leakage.
+- **Centre A has only 2 multi-report cases.** A contributes almost nothing to estimating π; π for
+  A's reports must come from pooled / reader-level estimates (the same `report_x` values that read
+  P cases also read A cases — if `report_x` is a reader ID, reader-level π transfers to A). A's main
+  roles: LOCO test of generalisation (scanner, field of view, site; segmentation unseen) and raw
+  metrics; corrected metrics on A carry the transfer assumption and are reported as such.
 
 ---
 

@@ -161,3 +161,36 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   LPS; spacing/extent/orientation match `cbct-vlm-transfer/reports/intensity_percase.csv` for all
   5. A comparator bug (int vs float after outer merge made shapes look mismatched) was fixed with
   a regression test before the full run.
+
+- **Full manifest (job 614556, run `20261107-1830-c2aa718-manifest`, manifest hash
+  `72b68659…8805`):** 622 cases (A 95, F 63, P 412, S 52), 1000 EN reports, 367 multi-report,
+  EN/IT names match everywhere, no missing volumes, 622 distinct volume sha256.
+- **Duplicate data removed (Shivam's instruction, 2026-11-07).** `~/Datasets/ToothFairy4.zip`
+  deleted after extraction checks. `~/cbct-vlm-transfer/data/raw` was byte-identical to our copy
+  (job 614558: 2622/2622 files `cmp`-identical; 3 random volumes also matched the manifest sha256),
+  so it was replaced by a symlink to `~/Datasets/ToothFairy4` (keeps that project's 7 scripts that
+  reference `data/raw` working). ~93 GB freed in total.
+- **`cbct-vlm-transfer` preprocessed copies deleted (Shivam, 2026-11-07):** `data/prep_air` and the
+  seven `prep_crop*/prep_pad*/prep_xcrop*` folders (~74 GB, real folders, no links). Regenerable from
+  `data/raw` with that project's `scripts/ingest.py` / `preprocess.py`; note left in
+  `cbct-vlm-transfer/data/DELETED_PREP_README.txt`.
+- **Inventory (job 614559) → `reports/REPORT_M1_inventory.md`.** Geometry identical to the earlier
+  project's table for 622/622 cases. New flags: P116/P117/P260/P261 carry 4 EN reports with two per
+  `report_x`; 15 EN files in 5 identical-content groups across cases, all `report_x = 14`
+  (template reuse); centre A has 2 multi-report cases.
+- **P116/P117/P260/P261 — likely misfiled reports (evidence from file names only, 2026-11-07).**
+  P120, P121, P262, P263 (and P378) are absent from TF4 (no folder/scan/reports) but present in
+  ToothFairy3 with image + label. Per-reader running report numbers follow case order: reader 21
+  P115 977, P116 978, P117 981, P118 982, P119 991, P122 1183; reader 26 P119 1454 … P122 1450.
+  P116's extra reports (21/992, 26/1453) sit exactly where P120's are expected, P117's extras
+  (21/997, 26/1451) where P121's are expected → probably P120/P121 reports filed under P116/P117.
+  P260/P261 extras (24/1594, 24/1322; 31/1014|1036, 31/922|1015) do not fit cleanly. **Interim:**
+  exclude P116/P117/P260/P261 from multi-report analyses. **Possible repair (needs Shivam's OK
+  per case):** after per-report findings exist, match each extra report to TF3 masks of the
+  candidate scans (score only) and reassign; would recover P120/P121/P262/P263.
+- **Segmentation leakage handled by retraining without the test set (Shivam, 2026-11-07).** The
+  existing U-Mamba2 (`fold_all`, trained on all ToothFairy3 = all P/F/S scans) cannot provide
+  inputs for evaluating anything on P/F/S. After the split: retrain U-Mamba2 on development P/F/S +
+  5 TF3-only scans; locked test set clean for segmentation and VLM. Within-CV overlap accepted for
+  development; per-fold segmentation decided at G3. HANDOFF §6.4 updated (also: role of centre A,
+  which has 2 multi-report cases).
