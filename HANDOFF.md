@@ -156,6 +156,20 @@ A reader cannot omit what is not in the scan, so every quantity is **conditional
   per-report parser must label them separately.
 - Field-of-view class is a split stratum and a covariate in every centre comparison.
 
+**Agreed rules (2026-11-07; thresholds frozen after the image-facts job, before any report analysis):**
+three tiers — (1) *mask-checkable* (missing teeth, implants, crowns, bridges): propensity from reader
+agreement + validated against TF3 masks; (2) *visibility from image, no truth* (caries, fillings, root
+canal treatment, periapical lesions, canal–tooth relation, sinus findings, condyles): propensity from
+reader agreement, visibility from masks/geometry; (3) *visibility undecidable*: reported separately as
+a sensitivity analysis, not in headline numbers. Per group: jaw-level findings visible if the jaw label
+exceeds a minimum size; per-tooth findings if the tooth label is present; periapical lesion only if the
+tooth's root tip is not cut by the scan boundary; missing tooth only if the slot lies between present
+teeth or the quadrant's jaw label does not touch the lateral/AP boundary (else "not assessable");
+canal visible if its label is not mostly cut; sinus visible if its label is ≥ X % of a typical complete
+sinus (full-height F scans), X = 50 % with 25/75 % sensitivity; **condyles** visible if the mandible
+label's posterior-superior ends lie inside the volume (not touching the top boundary). Reader statements
+such as "not included in the field of view" never define visibility; they are used to validate it.
+
 ---
 
 ## 3. Repository layout

@@ -266,3 +266,17 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   template fallback (`REPORT_FALLBACK_ON_ERROR=1`), not VLM output. Fix: full A100 40GB (`--qos=a100
   --gres=gpu:a100:1`, next size up per the GPU policy, justified by this evidence); smoke job now sets
   `REPORT_FALLBACK_ON_ERROR=0` and checks `competition_runner exited 0` per case.
+- **Visibility rules adopted (Shivam, 2026-11-07):** three tiers + per-group rules incl. jawbone-based
+  condyle rule; written into HANDOFF §2.6. Thresholds frozen after the image-facts job.
+- **Lumetti et al., "Ontology-Grounded Structured Prediction for Dental CBCT Reporting" (MICCAI paper
+  0618; repo `AImageLab-zip/CBCT-Report`)** — closest prior work, on the same ToothFairy3 reports
+  (893 reports / 529 TF3 cases). Facts: (1) reports written by **2 radiologists + 6 maxillofacial
+  surgeons (8 readers)** → our `report_x` (~15 distinct values within P/F/S) is probably **not** a reader
+  ID; reader-level analysis needs real reader IDs (ask organisers). (2) Released: ontology
+  (`ontology.ttl`, 15 finding types with tooth/side/quadrant slots and qualifiers, incl. ToothAbsence,
+  MandibularCondyleFinding; no visibility class), SHACL shapes, **per-patient consolidated** labels
+  (`data/ttl_reports`, clinician-validated); per-report extractions (`ttl_reports_single`) **not** released.
+  (3) Labels built with GPT-5.2 from both reports consolidated (union). (4) Human agreement on 358
+  two-report patients: pres-F1 0.81, inst-F1 0.70, rep-F1 0.67 (a published noise floor / evidence of
+  partial references). (5) GT vs predicted masks: char-acc 85.4 → 51.0 (segmentation quality matters).
+  Repo files read: README, API directory listings, `ontology.ttl` only (no report or TTL instance text).
