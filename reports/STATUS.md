@@ -25,6 +25,13 @@ Read HANDOFF.md (rules, plan) and DECISIONS.md (evidence) first. This file is on
 1. Check both jobs (`sacct`, logs in `logs/`). If the A segmentation finished, add an A adapter to
    `partialref.audit.visibility_features` (predicted masks are already on the TF4 grid: no flip;
    pulp = 199) and run it for A.
+   **P/F/S features finished** (job 614607, run `20261107-2050-da2f91d-visibility-features`). First look,
+   to investigate before any threshold: (a) maxilla label present F 97 %, P 30 %, S 85 % although P has
+   median 8 upper teeth → "jaw included = label OR teeth present"; (b) mandible touches the top face
+   in 100 % of cases incl. F → check for stray voxels (use a robust measure, e.g. voxels on the top
+   slice) before the condyle rule; (c) left-sinus volume median P 0, S 0, F 741 mm³ → F is NOT a
+   "complete sinus" reference; need another reference (A predictions / literature); (d) root tip cut
+   by the scan edge: F 17.5 %, P 35 %, S 44 % of present teeth.
 2. Show Shivam per-centre distributions (jaw labels present, root tips cut, sinus volume vs F,
    condyle region cut, quadrant edges) → **freeze visibility thresholds** in DECISIONS.md before any
    report analysis.
