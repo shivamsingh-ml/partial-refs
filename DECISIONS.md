@@ -229,3 +229,8 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
 - **Release version:** zip entries dated 2026-04 (15 volumes), 2026-05 (reports, dirs), 2026-07
   (607 volumes, reports), latest 2026-07-29 → our copy is a late-July-2026 build; the official page
   (625 cases / 1001 reports / max 3 per case) likely describes another version.
+- **GPU envs built (job 614588, 2026-11-07), no container:** `pr_serve` — vllm 0.19.0, torch 2.10.0,
+  transformers 4.57.6 (as in the submitted image); `pr_train` — torch 2.11.0+cu130, transformers 5.9.0,
+  peft 0.20.0, accelerate 1.13.0, flash-linear-attention 0.5.2, no gptqmodel. `pip check` clean for
+  both; lock files `env/pr_serve.lock.txt`, `env/pr_train.lock.txt`. CUDA not yet exercised (GPU
+  smoke run pending).
