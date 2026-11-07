@@ -288,3 +288,8 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   (+ ablations, controls, our decoder) stays the centrepiece. (4) **Reader-level analysis dropped**
   (no reader IDs; organisers cannot be contacted); centre level only. HANDOFF M1 step 4 and M2 step 1
   updated.
+- **M0 smoke run PASSED (job 614601, full A100 40GB, released weights, environment test only):** the
+  submitted V2V2R pipeline ran end to end without container on P001, F001, A003 — segmentation
+  (`umamba2` env), facts, vLLM 0.19 (`pr_serve`) + VQA + report, `competition_runner exited 0`
+  (`VLM_OK`) for all three, fallback disabled; 5.0–6.6 min/case; valid JSON reports (91–103 words).
+  No metrics computed. Note: segmentation alone runs fine on a MIG slice; vLLM needs a full GPU.
