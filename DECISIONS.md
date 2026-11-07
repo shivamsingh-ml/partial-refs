@@ -234,3 +234,22 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   peft 0.20.0, accelerate 1.13.0, flash-linear-attention 0.5.2, no gptqmodel. `pip check` clean for
   both; lock files `env/pr_serve.lock.txt`, `env/pr_train.lock.txt`. CUDA not yet exercised (GPU
   smoke run pending).
+- **Models (job 614596):** `Qwen/Qwen3.5-9B` (bf16, for retraining) → `models/Qwen3.5-9B`, commit
+  `c202236235762e1c871ad0ccb60c8ee5ba337b9a`, 19.3 GB. `lucent517/v2v2r_cbct_vqa` (released model =
+  LoRA merged into AWQ) is a **gated** repo → needs Shivam's HF token in `~/.secrets/hf.env`.
+  Source of the plain AWQ base `models/Qwen3.5-9B-AWQ` (merge target for retrained adapters) is
+  unknown → ask Shivam; fallback: rebuild it from the released checkpoint by restoring the bf16
+  visual/attention tensors from `Qwen/Qwen3.5-9B` (bit-identical by AWQ's skip list, per
+  `merge_vision_lora.py`).
+- **Facts from submitted code (`external/odin2026/config.py`):** (1) the facts the released VLM was
+  trained on mislabel 3 of 4 quadrants (sequential seg labels read as FDI); inference reproduces this
+  on purpose (`REMAP_MODEL_TO_FDI=0`). Per-fold retraining could use corrected facts — Shivam's
+  decision. (2) Orientation lead: "per the ToothFairy4 dataset correction, the reports align with the
+  RAW image content, so we do NOT reorient by affine" → relevant to the left/right question.
+- **`external/odin2026/inference.py` edited (first change to the imported code):** `INPUT_PATH` /
+  `OUTPUT_PATH` read `INPUT_DIR` / `OUTPUT_DIR` env vars (defaults `/input`, `/output` unchanged) so the
+  pipeline runs outside the container. No behavioural change.
+- **What the masks can confirm (TF3 labels):** per-tooth presence (64 tooth + 32 pulp labels),
+  implant (10), crown (9), bridge (8), jaws (1, 2), canals (3, 4, 103–105), sinuses (5, 6), pharynx
+  (7). No label for fillings, root canal fillings or condyles. Schema v7.1 has explicit visibility
+  fields (`maxilla_scope.maxilla_included`, sinus/condyle `scope`).
