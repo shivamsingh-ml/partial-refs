@@ -1,0 +1,1205 @@
+{
+  "description": "Full CBCT dental report decision tree — Mandible + Maxilla + Significant Negative Findings",
+  "version": "2.0",
+  "report_structure": [
+    "preamble",
+    "mandible",
+    "maxilla",
+    "significant_negative_findings"
+  ],
+  "teeth": {
+    "mandible": [
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48
+    ],
+    "maxilla": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28
+    ]
+  },
+  "wisdom_teeth": {
+    "mandible": [
+      38,
+      48
+    ],
+    "maxilla": [
+      18,
+      28
+    ]
+  },
+  "quadrants": {
+    "mandible": {
+      "3": [
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38
+      ],
+      "4": [
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48
+      ]
+    },
+    "maxilla": {
+      "1": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18
+      ],
+      "2": [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28
+      ]
+    }
+  },
+  "quadrant_names": {
+    "1": "I",
+    "2": "II",
+    "3": "III",
+    "4": "IV"
+  },
+  "input_fields": {
+    "global": {
+      "dentition_type": "enum             — primary | mixed | permanent",
+      "absent_teeth": "list[int]        — all absent FDI numbers; filtered to arch at runtime",
+      "full_crowns": "list[int]        — FDI numbers with full crown restorations",
+      "post_and_core_crowns": "list[int]        — FDI numbers with post-and-core restorations",
+      "implants": "list[object]     — [{fdi_numbers, peri_implant_bone_resorption: bool, well_osseointegrated: bool}]",
+      "fixed_bridges": "list[object]     — [{fdi_numbers, anchor_teeth, implant_positions, pontic_positions}]",
+      "crown_morphology_description": "string | null    — free text if any abnormal crown morphology",
+      "root_morphology_description": "string | null    — free text if any abnormal root morphology",
+      "other_impacted_teeth": "list[object]     — [{fdi: int, description: string}]",
+      "intrasinusal_teeth": "list[int]        — FDI numbers of teeth with intrasinusal roots"
+    },
+    "mandible": {
+      "mandible_condyle_right": "enum             — included | partially_included | not_included",
+      "mandible_condyle_left": "enum             — included | partially_included | not_included",
+      "mandible_rami_right": "enum             — included | partially_included | not_included",
+      "mandible_rami_left": "enum             — included | partially_included | not_included",
+      "mandible_coronoid_right": "enum             — included | partially_included | not_included",
+      "mandible_coronoid_left": "enum             — included | partially_included | not_included",
+      "right_condyle_description": "string | null    — free text when right condyle partially or fully included",
+      "left_condyle_description": "string | null    — free text when left condyle partially or fully included",
+      "right_canal_abnormal_location": "bool",
+      "right_canal_course_description": "string | null    — free text when right canal has abnormal course",
+      "right_canal_close_to_teeth": "bool",
+      "right_canal_proximity_description": "string | null    — free text when right canal close to teeth",
+      "left_canal_abnormal_location": "bool",
+      "left_canal_course_description": "string | null    — free text when left canal has abnormal course",
+      "left_canal_close_to_teeth": "bool",
+      "left_canal_proximity_description": "string | null    — free text when left canal close to teeth",
+      "mandible_alveolar_bone": {
+        "bone_loss_present": "bool",
+        "extent": "enum             — mild | moderate | severe",
+        "region": "string | null    — null = generalized"
+      },
+      "wisdom_tooth_38": {
+        "eruption_status": "enum | null      — fully_erupted | partially_erupted | minimally_erupted",
+        "inclination": "enum | null      — buccally_inclined | lingually_inclined",
+        "impaction_direction": "enum | null      — mesially_impacted | distally_impacted | horizontally_impacted | vertically_impacted"
+      },
+      "wisdom_tooth_48": "same as wisdom_tooth_38"
+    },
+    "maxilla": {
+      "maxilla_scope": "enum             — complete | partial | not_included",
+      "maxilla_sinus_right_scope": "enum             — complete | partial | minimal | not_included",
+      "maxilla_sinus_left_scope": "enum             — complete | partial | minimal | not_included",
+      "maxilla_sinus_right_mucosal_normal": "bool",
+      "maxilla_sinus_left_mucosal_normal": "bool",
+      "maxilla_alveolar_bone": {
+        "bone_loss_present": "bool",
+        "extent": "enum             — mild | moderate | severe",
+        "region": "string | null    — null = generalized"
+      },
+      "wisdom_tooth_18": "same as wisdom_tooth_38",
+      "wisdom_tooth_28": "same as wisdom_tooth_38"
+    },
+    "per_tooth": {
+      "teeth.tooth_{fdi}.endodontic_status": {
+        "root_canal_treatment": "bool",
+        "filling_quality": "enum             — none | adequate | inadequate | overfilled | discontinuous",
+        "periapical_lesion": "bool"
+      },
+      "teeth.tooth_{fdi}.prosthetics": {
+        "crown": "enum             — none | full | partial"
+      },
+      "teeth.tooth_{fdi}.post_and_core": {
+        "present": "bool"
+      }
+    }
+  },
+  "sections": {
+    "preamble": {
+      "description": "First sentence of the whole report. Only emitted when dentition is not permanent.",
+      "evaluation_order": [
+        "dentition_type"
+      ],
+      "output_order": [
+        "dentition_type"
+      ],
+      "nodes": [
+        {
+          "id": "dentition_type",
+          "type": "branch",
+          "input_field": "dentition_type",
+          "branches": [
+            {
+              "condition": "dentition_type == 'permanent'",
+              "label": "Permanent — skip",
+              "output": null
+            },
+            {
+              "condition": "dentition_type == 'mixed'",
+              "label": "Mixed dentition",
+              "output": "Pediatric patient with incomplete eruption of the permanent teeth."
+            },
+            {
+              "condition": "dentition_type == 'primary'",
+              "label": "Primary dentition",
+              "output": "Full primary dentition, permanent teeth unerupted."
+            }
+          ]
+        }
+      ]
+    },
+    "mandible": {
+      "description": "Mandible section: Q III (31–38) and Q IV (41–48). Scope evaluated last, output first.",
+      "evaluation_order": [
+        "right_condyle",
+        "left_condyle",
+        "canals",
+        "alveolar_bone",
+        "absent_teeth",
+        "wisdom_teeth",
+        "other_impacted_teeth",
+        "dental_arch_collection_empty",
+        "tooth_detailed_findings",
+        "prosthetic_findings",
+        "cysts_pathology",
+        "scope"
+      ],
+      "output_order": [
+        "scope",
+        "alveolar_bone",
+        "canals",
+        "dental_arch_findings",
+        "tooth_detailed_findings",
+        "prosthetic_findings",
+        "cysts_pathology",
+        "condyles"
+      ],
+      "nodes": [
+        {
+          "id": "scope",
+          "type": "rule",
+          "description": "Evaluated last. All parts completely included → complete; otherwise → partial (default).",
+          "condition": "mandible_condyle_right == 'included' AND mandible_condyle_left == 'included' AND mandible_rami_right == 'included' AND mandible_rami_left == 'included' AND mandible_coronoid_right == 'included' AND mandible_coronoid_left == 'included'",
+          "branches": [
+            {
+              "condition": "all_included",
+              "output": "Mandible is completely included in the scan volume."
+            },
+            {
+              "condition": "otherwise",
+              "output": "Mandible is partially included in the scan volume."
+            }
+          ]
+        },
+        {
+          "id": "alveolar_bone",
+          "type": "branch",
+          "input_field": "mandible_alveolar_bone.bone_loss_present",
+          "branches": [
+            {
+              "condition": "bone_loss_present == false",
+              "output": null
+            },
+            {
+              "condition": "bone_loss_present == true",
+              "next": "alveolar_bone_describe"
+            }
+          ]
+        },
+        {
+          "id": "alveolar_bone_describe",
+          "type": "branch",
+          "input_field": "mandible_alveolar_bone.region",
+          "branches": [
+            {
+              "condition": "region == null OR region == ''",
+              "output_pattern": "Mandible with {extent}-degree atrophy.",
+              "examples": [
+                "Mandible with moderate-degree atrophy."
+              ]
+            },
+            {
+              "condition": "region != null AND region != ''",
+              "output_pattern": "Mandible with {extent}-degree atrophy in the {region}.",
+              "examples": [
+                "Mandible with moderate-degree atrophy in the premolar–molar region in both quadrants."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "canals",
+          "type": "rule",
+          "description": "If both canals normal → one combined sentence. Otherwise evaluate each independently.",
+          "condition": "right_canal_abnormal_location == false AND right_canal_close_to_teeth == false AND left_canal_abnormal_location == false AND left_canal_close_to_teeth == false",
+          "branches": [
+            {
+              "condition": "both_normal",
+              "output": "Right and left mandibular canals with a regular course."
+            },
+            {
+              "condition": "any_abnormal",
+              "next": "canals_per_side"
+            }
+          ]
+        },
+        {
+          "id": "canals_per_side",
+          "type": "group",
+          "description": "Evaluate right and left canals independently. One sentence per finding per side.",
+          "nodes": [
+            {
+              "id": "right_canal_location",
+              "type": "branch",
+              "input_field": "right_canal_abnormal_location",
+              "branches": [
+                {
+                  "condition": "false",
+                  "output": null,
+                  "next": "right_canal_proximity"
+                },
+                {
+                  "condition": "true",
+                  "next": "right_canal_location_describe"
+                }
+              ]
+            },
+            {
+              "id": "right_canal_location_describe",
+              "type": "leaf",
+              "output_type": "free_text",
+              "input_field": "right_canal_course_description",
+              "examples": [
+                "The right mandibular canal shows a predominantly lingual course.",
+                "The right mandibular canal appears mildly superficialized in relation to the vertical resorption of the alveolar crest and is located in a centro-lingual position."
+              ],
+              "next": "right_canal_proximity"
+            },
+            {
+              "id": "right_canal_proximity",
+              "type": "branch",
+              "input_field": "right_canal_close_to_teeth",
+              "branches": [
+                {
+                  "condition": "false",
+                  "output": null
+                },
+                {
+                  "condition": "true",
+                  "next": "right_canal_proximity_describe"
+                }
+              ]
+            },
+            {
+              "id": "right_canal_proximity_describe",
+              "type": "leaf",
+              "output_type": "free_text",
+              "input_field": "right_canal_proximity_description",
+              "examples": [
+                "The right mandibular canal is in close relationship with 47 and 48."
+              ]
+            },
+            {
+              "id": "left_canal_location",
+              "type": "branch",
+              "input_field": "left_canal_abnormal_location",
+              "branches": [
+                {
+                  "condition": "false",
+                  "output": null,
+                  "next": "left_canal_proximity"
+                },
+                {
+                  "condition": "true",
+                  "next": "left_canal_location_describe"
+                }
+              ]
+            },
+            {
+              "id": "left_canal_location_describe",
+              "type": "leaf",
+              "output_type": "free_text",
+              "input_field": "left_canal_course_description",
+              "examples": [
+                "The left mandibular canal shows a predominantly lingual course.",
+                "The left mandibular canal appears mildly superficialized in relation to the vertical resorption of the alveolar crest and is located in a centro-lingual position."
+              ],
+              "next": "left_canal_proximity"
+            },
+            {
+              "id": "left_canal_proximity",
+              "type": "branch",
+              "input_field": "left_canal_close_to_teeth",
+              "branches": [
+                {
+                  "condition": "false",
+                  "output": null
+                },
+                {
+                  "condition": "true",
+                  "next": "left_canal_proximity_describe"
+                }
+              ]
+            },
+            {
+              "id": "left_canal_proximity_describe",
+              "type": "leaf",
+              "output_type": "free_text",
+              "input_field": "left_canal_proximity_description",
+              "examples": [
+                "The left mandibular canal is in close relationship with 37 and 38."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "right_condyle",
+          "type": "branch",
+          "input_field": "mandible_condyle_right",
+          "branches": [
+            {
+              "condition": "not_included",
+              "output": null
+            },
+            {
+              "condition": "partially_included",
+              "next": "right_condyle_partial_describe"
+            },
+            {
+              "condition": "included",
+              "next": "right_condyle_complete_describe"
+            }
+          ]
+        },
+        {
+          "id": "right_condyle_partial_describe",
+          "type": "leaf",
+          "output_type": "free_text",
+          "input_field": "right_condyle_description",
+          "examples": [
+            "The neck of the right condyle is visible."
+          ]
+        },
+        {
+          "id": "right_condyle_complete_describe",
+          "type": "leaf",
+          "output_type": "free_text",
+          "input_field": "right_condyle_description",
+          "examples": [
+            "Complete inclusion of the right condyle within the scan volume, which appears regular in bony contour with no evidence of remodeling."
+          ]
+        },
+        {
+          "id": "left_condyle",
+          "type": "branch",
+          "input_field": "mandible_condyle_left",
+          "branches": [
+            {
+              "condition": "not_included",
+              "output": null
+            },
+            {
+              "condition": "partially_included",
+              "next": "left_condyle_partial_describe"
+            },
+            {
+              "condition": "included",
+              "next": "left_condyle_complete_describe"
+            }
+          ]
+        },
+        {
+          "id": "left_condyle_partial_describe",
+          "type": "leaf",
+          "output_type": "free_text",
+          "input_field": "left_condyle_description",
+          "examples": [
+            "The neck of the left condyle is visible."
+          ]
+        },
+        {
+          "id": "left_condyle_complete_describe",
+          "type": "leaf",
+          "output_type": "free_text",
+          "input_field": "left_condyle_description",
+          "examples": [
+            "Complete inclusion of the left condyle within the scan volume, which appears regular in bony contour with no evidence of remodeling."
+          ]
+        },
+        {
+          "id": "condyles_both_not_included",
+          "type": "rule",
+          "description": "When both condyles are not_included, emit one merged sentence.",
+          "condition": "mandible_condyle_right == 'not_included' AND mandible_condyle_left == 'not_included'",
+          "output": "The mandibular condyles are not included in the scan volume."
+        },
+        {
+          "id": "absent_teeth",
+          "type": "branch",
+          "input_field": "absent_teeth",
+          "description": "Filter to mandible teeth [31–38, 41–48] before evaluating.",
+          "branches": [
+            {
+              "condition": "absent_mandible == []",
+              "output": null
+            },
+            {
+              "condition": "absent_mandible != []",
+              "next": "absent_teeth_classify"
+            }
+          ]
+        },
+        {
+          "id": "absent_teeth_classify",
+          "type": "branch",
+          "description": "Edentulism threshold: all except 1–3 teeth per quadrant.",
+          "branches": [
+            {
+              "condition": "both_quadrants_fully_edentulous",
+              "output": "Complete edentulism."
+            },
+            {
+              "condition": "one_quadrant_fully_edentulous",
+              "output_pattern": "Complete edentulism of the {quadrant} quadrant.",
+              "examples": [
+                "Complete edentulism of the III quadrant."
+              ]
+            },
+            {
+              "condition": "both_quadrants_nearly_edentulous (1–3 teeth remaining)",
+              "output_pattern": "Complete edentulism except for {remaining_teeth}.",
+              "formatting_rules": {
+                "consecutive": "dash e.g. 34–36",
+                "non_consecutive": "comma",
+                "order": "ascending FDI"
+              },
+              "examples": [
+                "Complete edentulism except for 34–36."
+              ]
+            },
+            {
+              "condition": "one_quadrant_nearly_edentulous",
+              "output_pattern": "Complete edentulism of the {quadrant} quadrant except for {remaining_teeth}.",
+              "examples": [
+                "Complete edentulism of the III quadrant except for 34–36."
+              ]
+            },
+            {
+              "condition": "few_missing",
+              "output_pattern": "{absent_teeth} are absent.",
+              "formatting_rules": {
+                "consecutive": "dash e.g. 34–36",
+                "non_consecutive": "comma",
+                "order": "ascending FDI"
+              },
+              "examples": [
+                "34–36 are absent.",
+                "34, 44 are absent."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "wisdom_teeth",
+          "type": "branch",
+          "description": "Absent wisdom teeth already handled above. Only evaluate present ones.",
+          "branches": [
+            {
+              "condition": "all_absent",
+              "output": null
+            },
+            {
+              "condition": "any_present",
+              "next": "wisdom_teeth_describe"
+            }
+          ]
+        },
+        {
+          "id": "wisdom_teeth_describe",
+          "type": "leaf",
+          "description": "One sentence per abnormal tooth, ascending FDI order, all conditions combined.",
+          "per_tooth_fields": {
+            "eruption_status": "enum — partially_erupted | minimally_erupted (optional)",
+            "inclination": "enum — buccally_inclined | lingually_inclined (optional)",
+            "impaction_direction": "enum — mesially_impacted | distally_impacted | horizontally_impacted | vertically_impacted (optional)"
+          },
+          "output_pattern": "{FDI} is {conditions}.",
+          "examples": [
+            "38 is partially erupted, buccally inclined.",
+            "48 is mesially impacted.",
+            "38 is partially erupted, buccally inclined. 48 is horizontally impacted."
+          ]
+        },
+        {
+          "id": "other_impacted_teeth",
+          "type": "branch",
+          "input_field": "other_impacted_teeth",
+          "branches": [
+            {
+              "condition": "none",
+              "output": null
+            },
+            {
+              "condition": "present",
+              "next": "other_impacted_describe"
+            }
+          ]
+        },
+        {
+          "id": "other_impacted_describe",
+          "type": "leaf",
+          "output_type": "free_text",
+          "examples": [
+            "33 is vertically impacted."
+          ]
+        },
+        {
+          "id": "dental_arch_collection_empty",
+          "type": "rule",
+          "description": "If no findings from absent_teeth, wisdom_teeth, other_impacted → emit default.",
+          "condition": "no output from absent_teeth_classify AND no output from wisdom_teeth_describe AND no output from other_impacted_describe",
+          "output": "Teeth from 38 to 48 are present in the arch."
+        },
+        {
+          "id": "tooth_detailed_findings",
+          "type": "group",
+          "description": "Per-tooth findings merged within arch. All filtered to mandible teeth.",
+          "nodes": [
+            {
+              "id": "crown_morphology",
+              "type": "branch",
+              "description": "All normal → skip. Any abnormal → free text.",
+              "branches": [
+                {
+                  "condition": "all_normal",
+                  "output": null
+                },
+                {
+                  "condition": "any_abnormal",
+                  "next": "crown_morphology_describe"
+                }
+              ]
+            },
+            {
+              "id": "crown_morphology_describe",
+              "type": "leaf",
+              "output_type": "free_text",
+              "input_field": "crown_morphology_description",
+              "examples": [
+                "Carious lesions are suspected on teeth 47 and 36."
+              ]
+            },
+            {
+              "id": "root_morphology",
+              "type": "branch",
+              "branches": [
+                {
+                  "condition": "all_normal",
+                  "output": null
+                },
+                {
+                  "condition": "any_abnormal",
+                  "next": "root_morphology_describe"
+                }
+              ]
+            },
+            {
+              "id": "root_morphology_describe",
+              "type": "leaf",
+              "output_type": "free_text",
+              "input_field": "root_morphology_description",
+              "examples": [
+                "Suspicious root fracture in tooth 36."
+              ]
+            },
+            {
+              "id": "rct",
+              "type": "branch",
+              "input_field": "teeth.tooth_{fdi}.endodontic_status.root_canal_treatment",
+              "description": "Collect all RCT teeth in arch.",
+              "branches": [
+                {
+                  "condition": "none in arch",
+                  "output": null
+                },
+                {
+                  "condition": "any present",
+                  "next": "rct_describe"
+                }
+              ]
+            },
+            {
+              "id": "rct_describe",
+              "type": "group",
+              "nodes": [
+                {
+                  "id": "rct_list",
+                  "type": "leaf",
+                  "output_pattern": "Endodontic treatment involving teeth {rct_teeth}.",
+                  "formatting_rules": {
+                    "list_with_and": true
+                  },
+                  "examples": [
+                    "Endodontic treatment involving tooth 34.",
+                    "Endodontic treatment involving teeth 34, 36, and 47."
+                  ]
+                },
+                {
+                  "id": "rct_filling_quality",
+                  "type": "branch",
+                  "description": "Group teeth by filling quality. If any abnormal: skip adequate, describe only abnormal groups. If all adequate: one normal sentence.",
+                  "branches": [
+                    {
+                      "condition": "all adequate",
+                      "output_pattern": "{teeth} with canal filling material extending to the apices.",
+                      "examples": [
+                        "34 and 36 with canal filling material extending to the apices."
+                      ]
+                    },
+                    {
+                      "condition": "any inadequate",
+                      "output_pattern": "{teeth} with canal filling material not extending to the apices.",
+                      "examples": [
+                        "36 with canal filling material not extending to the apices."
+                      ]
+                    },
+                    {
+                      "condition": "any overfilled",
+                      "output_pattern": "{teeth} with canal filling material extending beyond the apices.",
+                      "examples": [
+                        "47 with canal filling material extending beyond the apices."
+                      ]
+                    },
+                    {
+                      "condition": "any discontinuous",
+                      "output_pattern": "{teeth} with canal filling material appearing discontinuous.",
+                      "examples": [
+                        "34 with canal filling material appearing discontinuous."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crown_restorations",
+              "type": "branch",
+              "input_field": "full_crowns (filtered to arch) OR teeth.tooth_{fdi}.prosthetics.crown",
+              "branches": [
+                {
+                  "condition": "none",
+                  "output": null
+                },
+                {
+                  "condition": "present",
+                  "output_pattern": "{Tooth|Teeth} {fdis} reconstructed with prosthetic crown.",
+                  "examples": [
+                    "Tooth 34 reconstructed with prosthetic crown.",
+                    "Teeth 34 and 36 reconstructed with prosthetic crown."
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "post_and_core",
+              "type": "branch",
+              "input_field": "post_and_core_crowns (filtered to arch) OR teeth.tooth_{fdi}.post_and_core.present",
+              "branches": [
+                {
+                  "condition": "none",
+                  "output": null
+                },
+                {
+                  "condition": "present",
+                  "output_pattern": "{Tooth|Teeth} {fdis} reconstructed with post and prosthetic crown.",
+                  "examples": [
+                    "Tooth 47 reconstructed with post and prosthetic crown.",
+                    "Teeth 34 and 47 reconstructed with post and prosthetic crown."
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "periapical_lesion",
+              "type": "branch",
+              "input_field": "teeth.tooth_{fdi}.endodontic_status.periapical_lesion",
+              "description": "Collect all affected teeth in arch. Sets periapical_flag → suppresses cysts normal statement and Significant Negative Findings.",
+              "branches": [
+                {
+                  "condition": "none in arch",
+                  "output": null,
+                  "sets_flag": "periapical_flag = false"
+                },
+                {
+                  "condition": "any present",
+                  "sets_flag": "periapical_flag = true",
+                  "output_pattern": "Radiolucent {lesion|lesions} observed at the {apex|apices} of {tooth|teeth} {fdis}.",
+                  "examples": [
+                    "Radiolucent lesion observed at the apex of tooth 36.",
+                    "Radiolucent lesions observed at the apices of teeth 36 and 47."
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "prosthetic_findings",
+          "type": "group",
+          "nodes": [
+            {
+              "id": "implants",
+              "type": "branch",
+              "input_field": "implants (filtered to arch)",
+              "branches": [
+                {
+                  "condition": "none",
+                  "output": null
+                },
+                {
+                  "condition": "present, no qualifier",
+                  "output_pattern": "Endosseous implants in positions {positions}."
+                },
+                {
+                  "condition": "peri_implant_bone_resorption == true",
+                  "output_pattern": "Endosseous implants in positions {positions}, with signs of peri-implant bone resorption."
+                },
+                {
+                  "condition": "well_osseointegrated == true",
+                  "output_pattern": "Endosseous implants in positions {positions}, with radiographically well osseointegration."
+                }
+              ]
+            },
+            {
+              "id": "bridge",
+              "type": "branch",
+              "input_field": "fixed_bridges (filtered to arch)",
+              "branches": [
+                {
+                  "condition": "none",
+                  "output": null
+                },
+                {
+                  "condition": "present",
+                  "output_pattern": "Fixed prosthetic bridge from {from} to {to}, with {anchors_and_implants}, and {pontics}.",
+                  "anchor_pattern": "anchor abutment {tooth|teeth} on {fdis}",
+                  "implant_pattern": "{an implant|implants} in the {fdis} region{s}",
+                  "pontic_pattern": "{a pontic|pontics} in the {fdis} region{s}",
+                  "examples": [
+                    "Fixed prosthetic bridge from 43 to 45, with anchor abutment teeth on 43 and 45, and a pontic in the 44 region.",
+                    "Fixed prosthetic bridge from 43 to 45, with anchor abutment tooth on 43, an implant in the 45 region, and a pontic in the 44 region."
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "cysts_pathology",
+          "type": "rule",
+          "description": "Periapical lesions are described here. Normal statement moved to significant_negative_findings.",
+          "condition": "periapical_flag == false",
+          "branches": [
+            {
+              "condition": "periapical_flag == true",
+              "description": "Already emitted by periapical_lesion node — no additional output here."
+            },
+            {
+              "condition": "periapical_flag == false",
+              "output": null,
+              "description": "Normal — no output here; handled by significant_negative_findings."
+            }
+          ]
+        }
+      ]
+    },
+    "maxilla": {
+      "description": "Maxilla section: Q I (11–18) and Q II (21–28). Scope evaluated last, output first. Suppression applies when maxilla not included.",
+      "evaluation_order": [
+        "alveolar_bone",
+        "maxillary_sinuses",
+        "absent_teeth",
+        "wisdom_teeth",
+        "other_impacted_teeth",
+        "dental_arch_collection_empty",
+        "tooth_detailed_findings",
+        "prosthetic_findings",
+        "cysts_pathology",
+        "scope"
+      ],
+      "output_order": [
+        "scope",
+        "alveolar_bone",
+        "dental_arch_findings",
+        "tooth_detailed_findings",
+        "prosthetic_findings",
+        "cysts_pathology",
+        "maxillary_sinuses"
+      ],
+      "nodes": [
+        {
+          "id": "scope",
+          "type": "rule",
+          "description": "Evaluated last. Suppression rule: both sinuses not_included AND maxilla_scope not_included → suppress all other output.",
+          "branches": [
+            {
+              "condition": "maxilla_sinus_right_scope == 'not_included' AND maxilla_sinus_left_scope == 'not_included' AND maxilla_scope == 'not_included'",
+              "output": "Maxilla not included in the scan volume.",
+              "suppresses": [
+                "alveolar_bone",
+                "maxillary_sinuses"
+              ]
+            },
+            {
+              "condition": "maxilla_sinus_right_scope == 'complete' AND maxilla_sinus_left_scope == 'complete' AND maxilla_scope == 'complete'",
+              "output": "Maxilla is completely included in the scan volume."
+            },
+            {
+              "condition": "otherwise",
+              "output": "Maxilla is partially included in the scan volume."
+            }
+          ]
+        },
+        {
+          "id": "alveolar_bone",
+          "type": "branch",
+          "input_field": "maxilla_alveolar_bone.bone_loss_present",
+          "branches": [
+            {
+              "condition": "false",
+              "output": null
+            },
+            {
+              "condition": "true",
+              "next": "alveolar_bone_describe"
+            }
+          ]
+        },
+        {
+          "id": "alveolar_bone_describe",
+          "type": "branch",
+          "input_field": "maxilla_alveolar_bone.region",
+          "branches": [
+            {
+              "condition": "region == null OR region == ''",
+              "output_pattern": "Maxilla with {extent}-degree atrophy.",
+              "examples": [
+                "Maxilla with moderate-degree atrophy."
+              ]
+            },
+            {
+              "condition": "region != null AND region != ''",
+              "output_pattern": "Maxilla with {extent}-degree atrophy in the {region}.",
+              "examples": [
+                "Maxilla with moderate-degree atrophy in the premolar–molar region in both quadrants."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "maxillary_sinuses",
+          "type": "group",
+          "description": "Evaluate scope, mucosal status, and intrasinusal teeth. Merge bilateral when both sides identical.",
+          "nodes": [
+            {
+              "id": "sinus_scope",
+              "type": "rule",
+              "description": "Bilateral merge when both sides identical; per-side when different.",
+              "branches": [
+                {
+                  "condition": "right_scope == left_scope == 'partial'",
+                  "output": "The maxillary sinuses are not completely included in the acquired volume."
+                },
+                {
+                  "condition": "right_scope == left_scope == 'minimal'",
+                  "output": "The maxillary sinuses are minimally included in the scan volume."
+                },
+                {
+                  "condition": "right_scope == left_scope == 'complete'",
+                  "output": "The maxillary sinuses are completely included in the scan volume."
+                },
+                {
+                  "condition": "right_scope != left_scope",
+                  "output_pattern": "The right maxillary sinus is {right_desc}. The left maxillary sinus is {left_desc}.",
+                  "scope_descriptions": {
+                    "partial": "not completely included in the acquired volume",
+                    "minimal": "minimally included in the scan volume",
+                    "complete": "completely included in the scan volume",
+                    "not_included": "not included in the scan"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "mucosal_status",
+              "type": "branch",
+              "input_fields": [
+                "maxilla_sinus_right_mucosal_normal",
+                "maxilla_sinus_left_mucosal_normal"
+              ],
+              "branches": [
+                {
+                  "condition": "both true",
+                  "output": "The maxillary sinuses appear normally pneumatized and clear, with no evidence of mucosal thickening or signs of sinusopathy."
+                },
+                {
+                  "condition": "both false",
+                  "output": "The maxillary sinuses show bilateral mucosal thickening."
+                },
+                {
+                  "condition": "right false only",
+                  "output": "The maxillary sinus shows mild mucosal thickening on the right side."
+                },
+                {
+                  "condition": "left false only",
+                  "output": "The maxillary sinus shows mild mucosal thickening on the left side."
+                }
+              ]
+            },
+            {
+              "id": "intrasinusal_teeth",
+              "type": "branch",
+              "input_field": "intrasinusal_teeth",
+              "branches": [
+                {
+                  "condition": "empty",
+                  "output": null
+                },
+                {
+                  "condition": "single tooth",
+                  "output_pattern": "Root of {fdi} intrasinusal.",
+                  "examples": [
+                    "Root of 18 intrasinusal."
+                  ]
+                },
+                {
+                  "condition": "multiple teeth",
+                  "output_pattern": "Roots of {fdis} intrasinusal.",
+                  "examples": [
+                    "Roots of 17 and 18 intrasinusal."
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "absent_teeth",
+          "description": "Same logic as mandible, filtered to maxilla teeth [11–18, 21–28]. Quadrant names: I and II.",
+          "type": "branch",
+          "branches": [
+            {
+              "condition": "absent_maxilla == []",
+              "output": null
+            },
+            {
+              "condition": "absent_maxilla != []",
+              "next": "absent_teeth_classify"
+            }
+          ]
+        },
+        {
+          "id": "absent_teeth_classify",
+          "type": "branch",
+          "description": "Same classification logic as mandible.",
+          "branches": [
+            {
+              "condition": "both_quadrants_fully_edentulous",
+              "output": "Complete edentulism."
+            },
+            {
+              "condition": "one_quadrant_fully_edentulous",
+              "output_pattern": "Complete edentulism of the {quadrant} quadrant.",
+              "examples": [
+                "Complete edentulism of the I quadrant."
+              ]
+            },
+            {
+              "condition": "both_nearly",
+              "output_pattern": "Complete edentulism except for {remaining_teeth}."
+            },
+            {
+              "condition": "one_nearly",
+              "output_pattern": "Complete edentulism of the {quadrant} quadrant except for {remaining_teeth}."
+            },
+            {
+              "condition": "few_missing",
+              "output_pattern": "{absent_teeth} are absent.",
+              "examples": [
+                "14–16 are absent.",
+                "12, 22 are absent."
+              ]
+            }
+          ]
+        },
+        {
+          "id": "wisdom_teeth",
+          "description": "Same logic as mandible for 18 and 28.",
+          "type": "branch",
+          "branches": [
+            {
+              "condition": "all_absent",
+              "output": null
+            },
+            {
+              "condition": "any_present",
+              "next": "wisdom_teeth_describe"
+            }
+          ]
+        },
+        {
+          "id": "wisdom_teeth_describe",
+          "type": "leaf",
+          "description": "Same logic as mandible. One sentence per abnormal tooth, ascending FDI.",
+          "output_pattern": "{FDI} is {conditions}.",
+          "examples": [
+            "18 is partially erupted, buccally inclined.",
+            "28 is mesially impacted."
+          ]
+        },
+        {
+          "id": "other_impacted_teeth",
+          "type": "branch",
+          "branches": [
+            {
+              "condition": "none",
+              "output": null
+            },
+            {
+              "condition": "present",
+              "next": "other_impacted_describe"
+            }
+          ]
+        },
+        {
+          "id": "other_impacted_describe",
+          "type": "leaf",
+          "output_type": "free_text"
+        },
+        {
+          "id": "dental_arch_collection_empty",
+          "type": "rule",
+          "condition": "no output from absent_teeth_classify AND no output from wisdom_teeth_describe AND no output from other_impacted_describe",
+          "output": "Teeth from 18 to 28 are present in the arch."
+        },
+        {
+          "id": "tooth_detailed_findings",
+          "description": "Same logic as mandible. All nodes filtered to maxilla teeth [11–28].",
+          "type": "group",
+          "ref": "mandible.tooth_detailed_findings"
+        },
+        {
+          "id": "prosthetic_findings",
+          "description": "Same logic as mandible. All nodes filtered to maxilla teeth [11–28].",
+          "type": "group",
+          "ref": "mandible.prosthetic_findings"
+        },
+        {
+          "id": "cysts_pathology",
+          "type": "rule",
+          "description": "Periapical lesions are described here. Normal statement moved to significant_negative_findings.",
+          "branches": [
+            {
+              "condition": "periapical_flag == true",
+              "description": "Already emitted by periapical_lesion node — no additional output here."
+            },
+            {
+              "condition": "periapical_flag == false",
+              "output": null,
+              "description": "Normal — no output here; handled by significant_negative_findings."
+            }
+          ]
+        }
+      ]
+    },
+    "significant_negative_findings": {
+      "description": "Top-level section after both mandible and maxilla. Suppressed if any periapical lesions found in either arch.",
+      "evaluation_order": [
+        "check_periapical_flag"
+      ],
+      "output_order": [
+        "significant_negative"
+      ],
+      "nodes": [
+        {
+          "id": "significant_negative",
+          "type": "rule",
+          "condition": "mandible.periapical_flag == false AND maxilla.periapical_flag == false",
+          "branches": [
+            {
+              "condition": "no periapical lesions in either arch",
+              "output": "No further definite osteolytic or osteosclerotic lesions are identified, nor cortical discontinuity."
+            },
+            {
+              "condition": "any periapical lesion found",
+              "output": null
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

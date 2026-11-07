@@ -1,0 +1,415 @@
+{
+  "_comment": "CBCT Dental Report Template v3 - rewritten against schema_v3.json (mandible/maxilla/dental_arch/dental_elements arrays, no category/role fields). Path convention: 'mandible.X', 'maxilla.X', 'dental_arch.X' reference a fact by its fact_id directly (matching schema_v3's flat top-level arrays); 'dental_elements.tooth_{fdi}_X.field' references a per-tooth fact, substituting the real FDI for {fdi}. KEY RULE (new in v3): every fact below that has a free-text 'findings'/'details' field uses it AS THE PRIMARY OUTPUT whenever it's non-empty -- v3's schema leans on free text far more than v2.0 did, so the template must surface it rather than only deriving sentences from the structured enum/bool fields. Structured fields still drive WHICH branch fires (is this abnormal at all?) and are the fallback wording when findings is empty.",
+  "_version": "3.0",
+  "_schema_version": "toothfairy4-v3",
+
+  "metadata": {
+    "report_type": "CBCT Dental Radiograph Report",
+    "clinician_style": true,
+    "convention": "FDI tooth numbering, quadrant order (18-11, 21-28, 38-31, 41-48)",
+    "language": "English",
+    "abnormal_mention_only": true,
+    "structure": "Preamble (dentition type + whole-mouth periodontal condition), then two arch paragraphs (Mandible, Maxilla) with no sub-headers, then a whole-mouth impacted-teeth note (not reliably splittable by arch since affected_teeth is free-text location, not strict FDI), then a closing significant-negative-findings line. Order within each arch: scope, condyles+canals (mandible only) / sinuses+nasal cavity (maxilla only), alveolar bone atrophy, bone quality, dental arch findings, tooth detailed findings, prosthetic findings."
+  },
+
+  "helpers_used_pervasively": {
+    "findings_or_fallback": "THE core v3 pattern. Given a fact with both structured fields and a findings/details string: if findings is_meaningful, output it verbatim as the sentence (it's written to already be a complete clinical sentence). If findings is empty but the structured fields indicate an abnormality, fall back to a templated sentence built from those fields. If findings is empty AND fields are all normal, output nothing.",
+    "is_meaningful": "not null, not empty string/list/dict, not in normal_enum_values for strings (unchanged from v2.0)"
+  },
+
+  "sections": [
+    {
+      "id": "dentition_type",
+      "title": "Dentition Type",
+      "required": false,
+      "omit_if_empty": true,
+      "source": "dental_arch.dentition_type",
+      "rules": [
+        { "condition": "dentition_type == 'mixed'", "output": "Pediatric patient with incomplete eruption of the permanent teeth.{findings_clause}",
+          "findings_clause_pattern": " {findings}", "note": "findings is specifically requested for the mixed case per its own schema description ('if it is mixed dentition, describe the teeth status')" },
+        { "condition": "dentition_type == 'primary'", "output": "Full primary dentition, permanent teeth unerupted." },
+        { "condition": "dentition_type == 'permanent'", "output": "" },
+        { "condition": "dentition_type == 'edentulous'", "output": "" }
+      ],
+      "primary_teeth_note": {
+        "source": "dental_arch.primary_teeth",
+        "condition": "primary_teeth == true AND dentition_type NOT IN ('mixed', 'primary')",
+        "output": "Note: isolated primary tooth/teeth retained despite otherwise permanent dentition.",
+        "note": "handles the adult-with-1-2-retained-primary-teeth edge case explicitly called out in dentition_type's own schema description"
+      }
+    },
+
+    {
+      "id": "periodontal_condition",
+      "title": "Periodontal Condition (whole-mouth)",
+      "required": false,
+      "omit_if_empty": true,
+      "source": "dental_arch.periodontal_condition",
+      "rules": [
+        { "condition": "extent == 'none'", "output": "" },
+        { "condition": "extent != 'none'", "output": "findings_or_fallback",
+          "fallback": "{scope} {extent} periodontal bone loss relative to tooth roots." }
+      ],
+      "example_output": "diffuse severe bone loss in both mandible and maxilla"
+    },
+
+    {
+      "id": "mandible_findings",
+      "title": "Mandible",
+      "arch": "mandible",
+      "fdi_range": [31, 48],
+      "required": true,
+      "omit_if_empty": false,
+      "flow": "paragraph_no_headers",
+      "component_order": ["scope", "right_condyle", "left_condyle", "right_canal", "left_canal",
+                          "alveolar_bone_atrophy", "bone_quality",
+                          "dental_arch_findings", "tooth_detailed_findings", "prosthetic_findings"],
+      "components": {
+        "scope": {
+          "title": "evaluated last, output first -- not asked directly, rolled up from mandible.mandible_scope's four fields",
+          "source": "mandible.mandible_scope",
+          "rules": [
+            { "condition": "right_condyle_included == 'fully_included' AND left_condyle_included == 'fully_included' AND right_coronoid_process_included == 'fully_included' AND left_coronoid_process_included == 'fully_included'",
+              "output": "Mandible is completely included in the scan volume." },
+            { "condition": "default", "output": "Mandible is partially included in the scan volume." }
+          ]
+        },
+        "right_condyle": {
+          "source": ["mandible.mandible_scope.right_condyle_included", "mandible.mandible_condyle_right_morphology"],
+          "rules": [
+            { "condition": "mandible_scope.right_condyle_included == 'not_included'", "output": "" },
+            { "condition": "mandible_scope.right_condyle_included != 'not_included'", "output": "{mandible_condyle_right_morphology}" }
+          ]
+        },
+        "left_condyle": {
+          "source": ["mandible.mandible_scope.left_condyle_included", "mandible.mandible_condyle_left_morphology"],
+          "rules": [
+            { "condition": "mandible_scope.left_condyle_included == 'not_included'", "output": "" },
+            { "condition": "mandible_scope.left_condyle_included != 'not_included'", "output": "{mandible_condyle_left_morphology}" }
+          ]
+        },
+        "condyle_and_coronoid_absent_override": {
+          "condition": "mandible_scope.right_condyle_included == 'not_included' AND mandible_scope.left_condyle_included == 'not_included' AND mandible_scope.right_coronoid_process_included == 'not_included' AND mandible_scope.left_coronoid_process_included == 'not_included'",
+          "output": "The bilateral mandibular condyles and coronoid processes are not included in the scan volume."
+        },
+        "_canal_note": "schema v6.4 replaced the canal's course enum (regular|lingual|buccal) with location (lingual|buccal). location is a position, true of every canal, so it can no longer license an abnormal-course sentence and there is no 'regular' value left to gate on: each side always gets the regular-course sentence, and location surfaces only inside the adjacent-teeth clause, where it relates to the roots the canal passes. Implemented in synthesize_report.render_canal.",
+        "right_canal": {
+          "source": "mandible.mandible_canal_right",
+          "rules": [
+            { "condition": "always", "output": "Right mandibular canal with a regular course{adjacent_clause}.",
+              "adjacent_clause_pattern": ", running {location}ly in close relationship with {adjacent_teeth_joined}",
+              "adjacent_clause_pattern_no_location": ", with close relationship with {adjacent_teeth_joined}" }
+          ]
+        },
+        "left_canal": {
+          "source": "mandible.mandible_canal_left",
+          "rules": [
+            { "condition": "always", "output": "Left mandibular canal with a regular course{adjacent_clause}.",
+              "adjacent_clause_pattern": ", running {location}ly in close relationship with {adjacent_teeth_joined}",
+              "adjacent_clause_pattern_no_location": ", with close relationship with {adjacent_teeth_joined}" }
+          ]
+        },
+        "alveolar_bone_atrophy": {
+          "source": "mandible.mandible_alveolar_bone_atrophy",
+          "rules": [
+            { "condition": "extent == 'none'", "output": "" },
+            { "condition": "extent != 'none'", "output": "findings_or_fallback",
+              "fallback": "Mandible with {extent}-degree atrophy of the edentulous ridge." }
+          ]
+        },
+        "bone_quality": {
+          "source": "mandible.mandible_bone_quality",
+          "rules": [
+            { "condition": "radiopaque_finding is_meaningful", "output": "{radiopaque_finding}" },
+            { "condition": "radiolucent_finding is_meaningful", "output": "{radiolucent_finding}" }
+          ],
+          "note": "no structured fallback exists for this fact -- it is pure free text by design, so if both fields are empty this component contributes nothing",
+          "sets_flag": "either non-empty field suppresses the whole-report significant_negative_findings closing line"
+        },
+        "dental_arch_findings": { "$ref": "#/shared_components/dental_arch_findings" },
+        "tooth_detailed_findings": { "$ref": "#/shared_components/tooth_detailed_findings" },
+        "prosthetic_findings": { "$ref": "#/shared_components/prosthetic_findings" }
+      }
+    },
+
+    {
+      "id": "maxilla_findings",
+      "title": "Maxilla",
+      "arch": "maxilla",
+      "fdi_range": [11, 28],
+      "required": true,
+      "omit_if_empty": false,
+      "flow": "paragraph_no_headers",
+      "component_order": ["scope", "alveolar_bone_atrophy", "bone_quality", "sinus_right", "sinus_left", "nasal_cavity",
+                          "dental_arch_findings", "tooth_detailed_findings", "prosthetic_findings"],
+      "components": {
+        "scope": {
+          "source": "maxilla.maxilla_scope",
+          "rules": [
+            { "condition": "maxilla_included == 'not_included' AND maxilla_sinus_right_included == 'not_included' AND maxilla_sinus_left_included == 'not_included'",
+              "output": "Maxilla not included in the scan volume.",
+              "suppresses": ["alveolar_bone_atrophy", "sinus_right", "sinus_left"] },
+            { "condition": "maxilla_included == 'fully_included' AND maxilla_sinus_right_included == 'fully_included' AND maxilla_sinus_left_included == 'fully_included'",
+              "output": "Maxilla is completely included in the scan volume." },
+            { "condition": "default", "output": "Maxilla is partially included in the scan volume." }
+          ]
+        },
+        "alveolar_bone_atrophy": {
+          "suppressed_if": "maxilla_scope.maxilla_sinus_right_included == 'not_included' AND maxilla_scope.maxilla_sinus_left_included == 'not_included'",
+          "source": "maxilla.maxilla_alveolar_bone_atrophy",
+          "rules": [
+            { "condition": "extent == 'none'", "output": "" },
+            { "condition": "extent != 'none'", "output": "findings_or_fallback",
+              "fallback": "Maxilla with {extent}-degree atrophy of the edentulous ridge." }
+          ]
+        },
+        "bone_quality": {
+          "source": "maxilla.maxilla_bone_quality",
+          "rules": [
+            { "condition": "radiopaque_finding is_meaningful", "output": "{radiopaque_finding}" },
+            { "condition": "radiolucent_finding is_meaningful", "output": "{radiolucent_finding}" }
+          ],
+          "sets_flag": "either non-empty field suppresses the whole-report significant_negative_findings closing line"
+        },
+        "sinus_right": {
+          "suppressed_if": "maxilla_scope.maxilla_sinus_right_included == 'not_included'",
+          "source": "maxilla.maxilla_sinus_right",
+          "rules": [
+            { "condition": "mucosa_state == 'normal' AND sinus_content == 'air' AND (sinus_left NOT suppressed AND sinus_left.mucosa_state == 'normal' AND sinus_left.sinus_content == 'air')",
+              "output": "__CONTRIBUTES_TO_COMBINED_NORMAL_DEFAULT__" },
+            { "condition": "mucosa_state != 'normal' OR sinus_content != 'air'", "output": "findings_or_fallback",
+              "fallback": "Right maxillary sinus with {mucosa_state} mucosa, {sinus_content} content." }
+          ]
+        },
+        "sinus_left": {
+          "suppressed_if": "maxilla_scope.maxilla_sinus_left_included == 'not_included'",
+          "source": "maxilla.maxilla_sinus_left",
+          "rules": [
+            { "condition": "mucosa_state == 'normal' AND sinus_content == 'air' AND (sinus_right NOT suppressed AND sinus_right.mucosa_state == 'normal' AND sinus_right.sinus_content == 'air')",
+              "output": "__CONTRIBUTES_TO_COMBINED_NORMAL_DEFAULT__" },
+            { "condition": "mucosa_state != 'normal' OR sinus_content != 'air'", "output": "findings_or_fallback",
+              "fallback": "Left maxillary sinus with {mucosa_state} mucosa, {sinus_content} content." }
+          ]
+        },
+        "sinus_combined_normal_default": {
+          "condition": "both sinus_right and sinus_left were normal/air (and neither suppressed)",
+          "output": "The maxillary sinuses appear normally pneumatized and clear, with no evidence of mucosal thickening or signs of sinusopathy."
+        },
+        "sinus_intrasinusal_teeth": {
+          "source": ["maxilla.maxilla_sinus_right.intrasinusal_teeth", "maxilla.maxilla_sinus_left.intrasinusal_teeth"],
+          "rule": "combine both sides' lists into ONE sentence, ascending FDI order",
+          "rules": [
+            { "condition": "both lists empty", "output": "" },
+            { "condition": "combined list has 1 tooth", "output": "Root of {tooth} intrasinusal." },
+            { "condition": "combined list has 2+ teeth", "output": "Roots of {teeth_list_joined} intrasinusal." }
+          ]
+        },
+        "nasal_cavity": {
+          "source": "maxilla.nasal_cavity",
+          "rules": [
+            { "condition": "turbinates_symmetrical == true AND findings is not_meaningful", "output": "" },
+            { "condition": "turbinates_symmetrical == false OR findings is_meaningful", "output": "findings_or_fallback",
+              "fallback": "Asymmetry of the nasal turbinates." }
+          ]
+        },
+        "dental_arch_findings": { "$ref": "#/shared_components/dental_arch_findings", "arch_override_note": "same logic as mandible, quadrants I and II" },
+        "tooth_detailed_findings": { "$ref": "#/shared_components/tooth_detailed_findings", "arch_override_note": "same logic as mandible, filtered to 11-28" },
+        "prosthetic_findings": { "$ref": "#/shared_components/prosthetic_findings", "arch_override_note": "same logic as mandible, filtered to 11-28" }
+      }
+    },
+
+    {
+      "id": "impacted_teeth_whole_mouth",
+      "title": "Impacted Teeth (non-wisdom)",
+      "required": false,
+      "omit_if_empty": true,
+      "position": "top-level, after both arch sections -- NOT split per arch, since affected_teeth is a free-text location description rather than strict FDI and can't be reliably allocated to one arch",
+      "source": "dental_arch.impacted_teeth",
+      "rules": [
+        { "condition": "affected_teeth is empty", "output": "" },
+        { "condition": "affected_teeth non-empty", "output": "{affected_teeth_joined}{details_clause}.",
+          "details_clause_pattern": "; {details}" }
+      ],
+      "example_output": "Above 11-12; positioned horizontally, superior to the root apices of adjacent teeth."
+    },
+
+    {
+      "id": "significant_negative_findings",
+      "title": "Significant Negative Findings",
+      "required": true,
+      "omit_if_empty": false,
+      "position": "top-level, closing",
+      "source": ["mandible.mandible_bone_quality", "maxilla.maxilla_bone_quality"],
+      "rules": [
+        { "condition": "mandible_bone_quality.radiopaque_finding is_meaningful OR mandible_bone_quality.radiolucent_finding is_meaningful OR maxilla_bone_quality.radiopaque_finding is_meaningful OR maxilla_bone_quality.radiolucent_finding is_meaningful",
+          "output": "" },
+        { "condition": "default", "output": "No further definite osteolytic or osteosclerotic lesions are identified, nor cortical discontinuity." }
+      ]
+    }
+  ],
+
+  "shared_components": {
+    "_comment": "Referenced by $ref from both mandible_findings and maxilla_findings above -- identical logic, each instantiated with that section's own fdi_range for filtering dental_arch's whole-mouth list-type facts.",
+
+    "dental_arch_findings": {
+      "absent_teeth": {
+        "source": "dental_arch.absent_teeth",
+        "note": "filter to this arch's fdi_range before classifying",
+        "helper": "classify_absent_teeth_pattern",
+        "rules": [
+          { "condition": "no absent teeth in range", "output": "" },
+          { "condition": "few missing, non-edentulous, consecutive run", "output": "{fdi_start}\u2013{fdi_end} are absent." },
+          { "condition": "few missing, non-edentulous, non-consecutive", "output": "{teeth_list_joined} are absent." },
+          { "condition": "nearly edentulous (all but 1-3 teeth per quadrant), one quadrant", "output": "Complete edentulism of the {quadrant_roman} quadrant except for {remaining_teeth_list}." },
+          { "condition": "nearly edentulous, both quadrants", "output": "Complete edentulism except for {remaining_teeth_list}." },
+          { "condition": "full quadrant edentulous, one quadrant only", "output": "Complete edentulism of the {quadrant_roman} quadrant." },
+          { "condition": "full quadrant edentulous, both quadrants", "output": "Complete edentulism." }
+        ]
+      },
+      "wisdom_teeth": {
+        "source": ["dental_arch.upper_right_wisdom_tooth", "dental_arch.upper_left_wisdom_tooth",
+                   "dental_arch.lower_left_wisdom_tooth", "dental_arch.lower_right_wisdom_tooth"],
+        "note": "only the two wisdom-tooth facts belonging to this arch apply (mandible: lower_left/lower_right = 38/48; maxilla: upper_right/upper_left = 18/28). Absent wisdom tooth -> handled by absent_teeth above (eruption_state=='absent' also covers this, so don't double-report). upper_right/upper_left carry a 'findings' field the lower two don't -- use it when present.",
+        "rules": [
+          { "condition": "eruption_state == 'fully_erupted' AND orientation == 'normal' AND impacted == 'none'", "output": "" },
+          { "condition": "findings is_meaningful (upper_right/upper_left only)", "output": "{findings}" },
+          { "condition": "otherwise, eruption_state != 'fully_erupted' OR orientation != 'normal' OR impacted != 'none'",
+            "output_parts": [
+              { "if": "eruption_state == 'partially_erupted' OR orientation in ('buccal','lingual')",
+                "output": "{fdi} is {eruption_phrase}{orientation_phrase}." },
+              { "if": "impacted != 'none'", "output": "{fdi} is {impacted}ly impacted." }
+            ],
+            "note": "one sentence per tooth, ascending FDI order, all applicable conditions combined per tooth per the two lines above" }
+        ]
+      },
+      "collection_empty_fallback": {
+        "condition": "absent_teeth + wisdom_teeth (this arch's two) all produced no findings for this arch",
+        "output_mandible": "Teeth from 38 to 48 are present in the arch.",
+        "output_maxilla": "Teeth from 18 to 28 are present in the arch."
+      }
+    },
+
+    "tooth_detailed_findings": {
+      "morphology": {
+        "source": "dental_elements.tooth_{fdi}_morphology",
+        "note": "filtered to this arch's fdi_range",
+        "rules": [
+          { "condition": "crown_morphology == 'normal' AND root_morphology == 'normal' AND findings is not_meaningful", "output": "" },
+          { "condition": "otherwise", "output": "findings_or_fallback",
+            "fallback": "Tooth {fdi}: {crown_morphology} crown morphology, {root_morphology} root morphology." }
+        ]
+      },
+      "eruption": {
+        "source": "dental_elements.tooth_{fdi}_eruption",
+        "note": "generic per-tooth eruption check, filtered to this arch's fdi_range. For the 4 wisdom teeth this is a deliberate independent cross-check against dental_arch's dedicated wisdom-tooth facts (same value expected from both, not merged) -- if they disagree, that's a signal to flag for review, not silently pick one.",
+        "rules": [
+          { "condition": "eruption_state == 'fully_erupted'", "output": "" },
+          { "condition": "eruption_state != 'fully_erupted' AND tooth is one of 18/28/38/48",
+            "output": "", "note": "suppressed here -- the dedicated wisdom_teeth component above already reports it with richer detail (impaction direction, orientation)" },
+          { "condition": "eruption_state != 'fully_erupted' AND tooth is NOT a wisdom tooth", "output": "{fdi} is {eruption_state}." }
+        ]
+      },
+      "endodontic_treatment": {
+        "source": ["dental_arch.root_canal_treatment", "dental_elements.tooth_{fdi}_endodontic_treatment.filling_quality",
+                   "dental_elements.tooth_{fdi}_endodontic_treatment.periapical_lesion"],
+        "cross_check": "dental_arch.root_canal_treatment (whole-mouth list) vs dental_elements.tooth_{fdi}_endodontic_treatment.root_canal_treatment (per-tooth bool) -- independent sources, reconciled outside this template",
+        "rules": [
+          { "condition": "root_canal_treatment (filtered to range) is empty", "output": "" },
+          { "condition": "root_canal_treatment (filtered to range) non-empty",
+            "output": "Endodontic treatment involving teeth {teeth_list_joined}.",
+            "followups": {
+              "note": "only abnormal-quality teeth described; if ANY abnormal quality exists, adequate teeth are skipped entirely",
+              "rules": [
+                { "condition": "all filling_quality == 'adequate'", "output": "{teeth_list_joined} with canal filling material extending to the apices." },
+                { "condition": "any filling_quality != 'adequate'", "output_per_quality_group": [
+                  { "quality": "inadequate", "output": "{teeth_list_joined} with canal filling material not extending to the apices." },
+                  { "quality": "overfilled", "output": "{teeth_list_joined} with canal filling material extending beyond the apices." },
+                  { "quality": "discontinuous", "output": "{teeth_list_joined} with canal filling material appearing discontinuous." }
+                ], "note": "group teeth sharing the same quality into one sentence; adequate-quality teeth omitted when any abnormal group exists" }
+              ]
+            }
+          },
+          { "condition": "any periapical_lesion == true in range", "output_append": " Periapical involvement noted at {teeth_with_periapical_lesion_joined} -- see bone quality findings below for description." }
+        ]
+      },
+      "periodontal_status": {
+        "source": "dental_elements.tooth_{fdi}_periodontal_status",
+        "note": "filtered to this arch's fdi_range",
+        "rules": [
+          { "condition": "bone_loss == 'none' AND furcation_involvement == false AND findings is not_meaningful", "output": "" },
+          { "condition": "otherwise", "output": "findings_or_fallback",
+            "fallback": "Tooth {fdi}: {bone_loss} periodontal bone loss{furcation_clause}.",
+            "furcation_clause_pattern": ", with furcation involvement" }
+        ]
+      },
+      "restoration": {
+        "source": "dental_elements.tooth_{fdi}_restoration",
+        "cross_check": "dental_arch.full_crowns / dental_arch.dental_fillings / dental_arch.post_and_core_crowns (whole-mouth lists) -- independent sources per restoration type, reconciled outside this template",
+        "rules": [
+          { "condition": "value == 'none' for all teeth in range", "output": "" },
+          { "condition": "value == 'crown' for one or more teeth", "output": "Teeth {teeth_list_joined} reconstructed with prosthetic crown." },
+          { "condition": "value == 'fillings' for one or more teeth", "output": "Teeth {teeth_list_joined} restored with dental fillings." },
+          { "condition": "value == 'post_and_core' for one or more teeth", "output": "Teeth {teeth_list_joined} reconstructed with post and prosthetic crown." }
+        ],
+        "note": "single-tooth vs multiple-teeth phrasing ('Tooth X' vs 'Teeth X and Y') follows the same singular/plural pattern as every other teeth-list sentence in this template"
+      }
+    },
+
+    "prosthetic_findings": {
+      "implants": {
+        "source": "dental_arch.implants",
+        "note": "filter .fdi_numbers to this arch's fdi_range",
+        "rules": [
+          { "condition": "no implants in range", "output": "" },
+          { "condition": "implants in range, no peri-implant finding, no crown", "output": "Endosseous implants in positions {positions_joined}." },
+          { "condition": "with_crown == true", "output_append": ", restored with an implant-supported crown" },
+          { "condition": "peri_implant_bone_resorption == true", "output": "Endosseous implants in positions {positions_joined}, with signs of peri-implant bone resorption." },
+          { "condition": "osseointegration_status == 'well'", "output": "Endosseous implants in positions {positions_joined}, with radiographically well osseointegration." }
+        ]
+      },
+      "bridge": {
+        "source": "dental_arch.fixed_bridges",
+        "note": "filter to bridges whose span falls within this arch's fdi_range",
+        "rules": [
+          { "condition": "no bridges in range", "output": "" },
+          { "condition": "bridge present, details is_meaningful", "output": "Fixed prosthetic bridge from {span_start} to {span_end}, with {anchors_clause} and {pontics_clause}. {details}" },
+          { "condition": "bridge present, details not_meaningful", "output": "Fixed prosthetic bridge from {span_start} to {span_end}, with {anchors_clause} and {pontics_clause}." }
+        ],
+        "anchors_clause": "\"anchor abutment teeth on {abutment_teeth_joined}\" and/or \"an implant in the {implant_supported_teeth[0]} region\" / \"implants in the {implant_supported_teeth_joined} regions\" (from implant_supported_teeth)",
+        "pontics_clause": "\"pontic in the {pontic_teeth[0]} region\" / \"pontics in the {pontic_teeth_joined} regions\" (from pontic_teeth)"
+      }
+    }
+  },
+
+  "rules": {
+    "normal_enum_values": ["normal", "none", "regular", "not_applicable", "fully_erupted", "complete", "well"],
+    "empty_prediction": {
+      "definition": "all facts are empty AND all dental_elements facts.detected in ['no', 'no_image', null]",
+      "output": ""
+    },
+    "normal_case": {
+      "definition": "prediction has real data but no abnormalities",
+      "output": "full report with normal findings"
+    },
+    "fdi_order": [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28, 38, 37, 36, 35, 34, 33, 32, 31, 41, 42, 43, 44, 45, 46, 47, 48],
+    "quadrant_ranges": { "I": [11, 18], "II": [21, 28], "III": [31, 38], "IV": [41, 48] },
+    "quadrant_roman": { "1": "I", "2": "II", "3": "III", "4": "IV" },
+    "section_separator": "\n\n",
+    "teeth_list_separator": ", ",
+    "teeth_list_joiner_final": " and "
+  },
+
+  "helpers": {
+    "is_meaningful": "not null, not empty string/list/dict, not in normal_enum_values for strings",
+    "is_abnormal_enum": "string value not in normal_enum_values",
+    "humanize": "replace underscores with spaces",
+    "merge_findings": "join per-tooth findings with semicolons; if multiple, wrap in period",
+    "affected_teeth": "convert list of FDI numbers to comma-separated string with 'and' before last",
+    "capitalize_first": "capitalize first letter of string",
+    "filter_by_fdi_range": "given a list of FDI numbers (or a list of objects with an FDI-bearing field) and an [lo, hi] range, keep only entries whose FDI falls in that arch's range -- used everywhere a dental_arch (whole-mouth) fact needs to contribute to only one arch's paragraph",
+    "classify_absent_teeth_pattern": "given the absent-teeth FDI list filtered to one arch (spanning 1-2 quadrants), classify into: (a) few missing/non-edentulous -- consecutive run vs non-consecutive scatter; (b) nearly edentulous -- all but 1-3 teeth missing in a quadrant, one quadrant or both; (c) full quadrant edentulous -- entire quadrant missing, one or both. Drives the absent_teeth rule table in shared_components.dental_arch_findings.",
+    "group_by_quality": "group a list of {fdi, quality} pairs into one sentence per distinct quality value, e.g. all 'inadequate' teeth in one clause, all 'overfilled' in another -- used for the endodontic_treatment filling-quality followups",
+    "phrase_position_list": "render a list of FDI positions as 'position 15' (single) or 'positions 26 and 27' (multiple), matching implants.location's expected phrasing",
+    "findings_or_fallback": "see helpers_used_pervasively above -- the core v3-specific pattern: prefer a fact's own findings/details free text verbatim over any templated sentence built from its structured fields"
+  }
+}
