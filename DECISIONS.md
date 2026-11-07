@@ -259,3 +259,10 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   target, source confirmed by Shivam); `Qwen/Qwen3.5-9B` @ `c2022362…` (bf16, training base).
 - **Smoke run submitted (job 614600, approved):** `jobs/smoke_v2v2r.sbatch` on P001, F001, A003,
   MIG `3g.20gb`; environment test only, no metrics.
+- **Smoke run 614600 FAILED for the VLM (correcting an earlier premature "passed").** Segmentation
+  (58–77 s/case on MIG 3g.20gb) and fact extraction worked for P001, F001, A003; vLLM 0.19 crashed at
+  startup in every case: `ValueError: invalid literal for int(): 'MIG-…'` (it parses
+  CUDA_VISIBLE_DEVICES as integers; SLURM gives MIG slices a UUID). The written reports were the
+  template fallback (`REPORT_FALLBACK_ON_ERROR=1`), not VLM output. Fix: full A100 40GB (`--qos=a100
+  --gres=gpu:a100:1`, next size up per the GPU policy, justified by this evidence); smoke job now sets
+  `REPORT_FALLBACK_ON_ERROR=0` and checks `competition_runner exited 0` per case.
