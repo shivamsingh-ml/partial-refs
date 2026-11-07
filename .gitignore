@@ -37,3 +37,6 @@ dist/
 
 # submitted code: few-shot examples may contain report-derived text (DUA) — kept in .cache only
 external/odin2026/vqa/code/fewshot_examples/
+
+# model weights (never in git)
+/models/
