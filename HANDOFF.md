@@ -137,6 +137,25 @@ for that metric.
 Rationale: George et al. (arXiv 2609.13238) showed a no-image prior scores near image models on
 ToothFairy4. Controls show how much of any score needs the image.
 
+### 2.6 Visibility (added 2026-11-07, agreed with Shivam)
+
+Scans differ in field of view by centre (P/S ≈ 51 mm slabs, F ≈ 82 mm, A ≈ 90 mm; DECISIONS.md).
+A reader cannot omit what is not in the scan, so every quantity is **conditional on visibility**:
+
+- π_f = P(reader mentions f | f present **and visible**); p_f = prevalence among visible instances.
+  Instances that are not visible are excluded from the propensity fit, agreement tables and noise
+  floor — they are neither omissions nor negatives.
+- **Visibility comes from the image only** (scan geometry, masks / segmentation), never from the
+  reports (that would be circular).
+- Partly visible structures: fixed rule "≥ X % of the structure inside the volume", X set before
+  looking at outcomes; sensitivity analysis over X.
+- **Model claims about non-visible anatomy get no omission credit:** the §2.2 correction applies
+  only to visible instances; claims outside the field of view are scored as errors and reported
+  separately (FOV-conflict rate).
+- Report statements such as "not assessable / outside the field of view" are not findings; the
+  per-report parser must label them separately.
+- Field-of-view class is a split stratum and a covariate in every centre comparison.
+
 ---
 
 ## 3. Repository layout

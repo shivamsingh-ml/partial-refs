@@ -112,3 +112,52 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   `vqa/code/fewshot_examples/` (11 files) is gitignored until Shivam confirms DUA status (may hold
   report-derived text; never opened); it stays in `.cache/odin2026-task1-code/`. Remote: `origin` =
   `git@github.com:shivamsingh-ml/partial-refs.git` (SSH; the cluster key authenticates).
+
+- **ToothFairy4 as uploaded (zip table of contents only, 2026-11-07).** `~/Datasets/ToothFairy4.zip`,
+  47.7 GB, 2622 files (48.1 GB unpacked). Layout differs from HANDOFF §6.1: one folder per case,
+  `{case}/cbct/volume.nii.gz`, `{case}/reports_en/cbct_<X>_<Y>.txt`, `{case}/reports_it/` with the
+  same file names. **No masks and no facts, no official train/validate split** in this release.
+  622 cases: P 412, A 95, F 63, S 52 (S IDs have 4 digits, e.g. `S0000`). 1000 EN + 1000 IT reports;
+  EN and IT file names identical in every case → each EN file is the translation of the IT file with
+  the same name (one reading, two languages), so readers are counted by file, EN only.
+  EN reports per case: 1→255, 2→360, 3→3, 4→4 (367 multi-report). By centre: A {1:93, 2:2},
+  F {2:62, 3:1}, P {1:154, 2:254, 4:4}, S {1:8, 2:42, 3:2}. `<Y>` is unique per report (371–3958).
+  **Hypothesis, to verify against the dataset documentation:** `<X>` (16 values, 14–35) is a reader
+  ID — in 363/367 multi-report cases all reports have different X, never the same X. Consequences
+  if confirmed: reader-level propensity and a direct test of reader exchangeability. Centre A has
+  almost no multi-report cases → its π cannot be estimated alone (pooling, HANDOFF §12.5 B/C).
+  Missing masks: mask-vs-report checks (M1.6) need our own segmentation (U-Mamba2) first.
+
+- **Prior knowledge from Shivam's `~/cbct-vlm-transfer` project (2026-11-07; to be re-derived by
+  our manifest, not trusted blindly).** Sources: `docs/DATASET.md` §0, `FINDINGS.md` #1, #14, #25,
+  `reports/intensity_percase.csv` (622 rows), `manifests/qc_flags.csv` (read as numbers/headings
+  only; no report text).
+  1. **Centres:** P/F/S = ToothFairy3 public Sets A/B/C (417/63/52 released → 412/63/52 with
+     paired reports); **A = external Sfax (Tunisia) cohort**, different site and scanner.
+     Answers HANDOFF §6.2.1 pending a check against the official dataset description.
+  2. **Field of view (FOV) differs by centre and is permanent:** z-extent median P 50.7 mm
+     (45.3–53.4, 100 % < 60 mm), S 51.6 mm, F 82.2 mm, A 90.0 mm; in-plane A ~83 mm, F ~123 mm,
+     P/S ~101–111 mm. P/S are thin slabs around the teeth ("cut" scans).
+  3. **Acquisition is confounded with centre:** A = LPS, spacing 0.12–0.45 mm (10 distinct),
+     often not air-calibrated / saturated; P/F/S = LAS, 0.30 mm isotropic.
+  4. **ToothFairy3 ships 77-class labels** for the P/F/S scans → masks may exist on disk for
+     527 cases (U-Mamba2 data, `sae_tooth` preds named `ToothFairy3P_<n>`); mapping TF4 ID ↔ TF3 ID
+     to be verified.
+  **Proposed consequence (needs Shivam's OK):** a finding outside the scanned volume cannot be
+  "omitted". Propensity, agreement tables and corrected precision must be computed only on
+  instances that are **visible in the FOV** (per finding: in-FOV indicator from geometry and, where
+  available, masks); FOV class becomes a split stratum and a covariate; the acquisition-only
+  control will largely encode centre.
+
+- **Visibility conditioning adopted (Shivam, 2026-11-07).** Propensity, agreement, noise floor and
+  corrected precision are defined on visible instances only; visibility from image geometry/masks,
+  never from reports; partial-visibility threshold fixed in advance + sensitivity analysis; model
+  claims outside the FOV get no omission credit (scored as errors, reported separately). New
+  HANDOFF §2.6.
+- **Data unpacked (job 614552, 2026-11-07):** `~/Datasets/ToothFairy4/`, 2622 files, 622 cases,
+  622 volumes, 1000 EN + 1000 IT reports, 45 GB, permissions owner-only. Zip sha256
+  `40dbbf2d…a073` (job 614550). `unzip` is not installed on compute nodes → Python `zipfile`.
+- **Manifest 5-case diagnostic (job 614554):** A003–A009; headers float32, qform/sform codes 1,
+  LPS; spacing/extent/orientation match `cbct-vlm-transfer/reports/intensity_percase.csv` for all
+  5. A comparator bug (int vs float after outer merge made shapes look mismatched) was fixed with
+  a regression test before the full run.
