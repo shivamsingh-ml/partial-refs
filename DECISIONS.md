@@ -215,3 +215,17 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   either both headers mirror left/right or TF3 names sides from the viewer; unresolved — test later
   by report-vs-mask laterality agreement (FDI quadrants). **To use TF3 masks on TF4 scans: flip
   label arrays on axes 1 and 2, then use the TF4 affine.** 299 cases lack jaw labels.
+- **Left/right still unresolved; prior work inconclusive (2026-11-07).** `~/U-Mamba2/quadrant_mirror.csv`
+  (edentulous-quadrant test): undecided 529/532 (P: 1 MIRRORED, 1 OTHER; F: 1 AGREE).
+  `check_flips.py` (implant FDI sites, report vs segmentation facts, as-is vs mirrored) and flip-test
+  logs 550053/550065 (A set): transforms with a z flip match the reports, but flip-x and no-flip-x
+  both match → laterality not identified. Plan: our own report-vs-TF3-mask laterality test (implants,
+  missing teeth, all P/F/S) after per-report findings exist.
+- **The 4 S "upside-down" flags (tooth/canal labels, TF4 frame):** S0004, S0034 — upper teeth above
+  lower teeth → scan fine, jaw-label artefact. S0002 — canals below lower teeth, "upper jaw" label is
+  a 9,768-voxel fragment → scan fine, label artefact. **S0015 — canals above lower teeth and an
+  81,556-voxel upper-jaw label below the lower jaw → probably stored upside down in TF4**; Shivam to
+  confirm visually on the cluster (images are not viewed by Claude: DUA).
+- **Release version:** zip entries dated 2026-04 (15 volumes), 2026-05 (reports, dirs), 2026-07
+  (607 volumes, reports), latest 2026-07-29 → our copy is a late-July-2026 build; the official page
+  (625 cases / 1001 reports / max 3 per case) likely describes another version.
