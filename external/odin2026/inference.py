@@ -13,6 +13,7 @@ the RAW image content, so we do NOT reorient by affine. See segmentation.py.
 
 import glob
 import json
+import os
 import time
 from pathlib import Path
 
@@ -30,8 +31,9 @@ from segmentation import run_segmentation
 from facts import run_fact_extraction
 from report_side import generate_report
 
-INPUT_PATH = Path("/input")
-OUTPUT_PATH = Path("/output")
+# partial-refs: env-overridable so the pipeline can run outside the container (defaults unchanged).
+INPUT_PATH = Path(os.getenv("INPUT_DIR", "/input"))
+OUTPUT_PATH = Path(os.getenv("OUTPUT_DIR", "/output"))
 
 
 def run() -> int:
