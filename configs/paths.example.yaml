@@ -1,0 +1,6 @@
+# Copy to configs/paths.yaml (gitignored) and fill in. Never commit real paths with data.
+project_dir: /msc/home/ssingh54/partial-refs
+data_dir: /msc/home/ssingh54/Datasets/ToothFairy4   # verify layout after upload
+odin2026_dir: external/odin2026
+umamba2_weights: <<FILL>>      # U-Mamba2 / TF3 segmentation weights
+results_dir: results

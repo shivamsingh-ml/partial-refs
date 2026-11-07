@@ -1,0 +1,39 @@
+# --- data / outputs (HANDOFF §3, §10) ---
+/results/
+/data/
+/logs/
+/scratch/
+*.nii
+*.nii.gz
+*.npz
+*.npy
+*.sif
+*.pth
+*.pt
+*.safetensors
+*.parquet
+configs/paths.yaml
+**/reports_raw/
+**/report_text/
+*_report_text*
+# report files in V2V2R convention ({case}_N.txt) must never be copied in here
+**/reports/*_[0-9].txt
+
+# --- secrets ---
+.env
+.secrets/
+~/.secrets
+
+# --- caches ---
+.cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+build/
+dist/
+
+# submitted code: few-shot examples may contain report-derived text (DUA) — kept in .cache only
+external/odin2026/vqa/code/fewshot_examples/

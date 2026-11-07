@@ -1,0 +1,14 @@
+# cbct_partialref — CPU env for audit, propensity, metrics, controls, figures, tests (HANDOFF §5.1–5.2).
+# Built by jobs/build_cpu_env.sbatch (never on the login node). conda-forge instead of Anaconda
+# `defaults` (licence terms). After the first build the resolved versions are frozen to
+# env/requirements-cpu.lock.txt.
+name: cbct_partialref
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+      - -r requirements-cpu.txt
+      - -e ..

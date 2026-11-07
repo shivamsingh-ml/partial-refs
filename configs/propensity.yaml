@@ -1,0 +1,19 @@
+# Propensity estimation + simulation study (HANDOFF §2.1, §7 M0.5).
+seed: 20261107
+
+simulate:
+  n_cases: 600
+  n_findings: 12
+  n_centres: 4
+  prevalence_range: [0.01, 0.6]
+  propensity_range: [0.2, 0.95]
+  centre_logit_sd: 0.5          # house-style spread of logit(pi) across centres
+  centre_prev_logit_sd: 0.0     # prevalence shared across centres by default
+  report_count_probs: [0.4, 0.45, 0.15]   # P(1, 2, 3 reports); ~60% of cases with >= 2
+  rho: 0.0                      # grid in the study: {0, 0.1, 0.3}
+  phi: 0.0                      # grid in the study: {0, 0.01, 0.03}
+
+fit:
+  fit_phi: false                # base model phi = 0
+  n_boot: 1000                  # case-level bootstrap resamples (HANDOFF §2.1: >= 1000)
+  alpha: 0.05

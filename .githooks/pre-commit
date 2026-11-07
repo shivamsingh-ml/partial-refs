@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Refuse commits that contain imaging/array/container files or files > 5 MB (HANDOFF §3).
+# Enable once per clone:  git config core.hooksPath .githooks
+set -euo pipefail
+max_bytes=$((5 * 1024 * 1024))
+fail=0
+while IFS= read -r -d '' f; do
+  case "$f" in
+    *.nii|*.nii.gz|*.npz|*.sif)
+      echo "pre-commit: refusing forbidden file type: $f" >&2; fail=1; continue ;;
+  esac
+  # size of the staged blob (not the working-tree file)
+  size=$(git cat-file -s ":$f" 2>/dev/null || echo 0)
+  if [ "$size" -gt "$max_bytes" ]; then
+    echo "pre-commit: refusing file over 5 MB ($size bytes): $f" >&2; fail=1
+  fi
+done < <(git diff --cached --name-only -z --diff-filter=ACMR)
+if [ "$fail" -ne 0 ]; then
+  echo "pre-commit: commit blocked (HANDOFF §3 / §10). Data never goes into git." >&2
+  exit 1
+fi

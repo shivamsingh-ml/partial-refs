@@ -1,0 +1,24 @@
+# CPU env requirements (HANDOFF §5.2). Unpinned on first build except radfact-lite; frozen
+# afterwards in requirements-cpu.lock.txt.
+# radfact-lite: pinned to this git SHA (the pin V2V2R used); PyPI 0.1.0 gives non-comparable
+# scores. Never change it (HANDOFF §10).
+radfact-lite @ git+https://github.com/AImageLab-zip/radfact_lite@053f680be1c57225f94d67b198a34aa871b1127d
+nltk            # METEOR via nltk + wordnet (data downloaded by the build job)
+numpy
+scipy
+pandas
+pyarrow
+scikit-learn
+statsmodels
+numpyro
+jax[cpu]
+rapidfuzz
+datasketch
+nibabel
+SimpleITK
+pyyaml
+pydantic>=2
+matplotlib
+pytest
+ruff
+pre-commit
