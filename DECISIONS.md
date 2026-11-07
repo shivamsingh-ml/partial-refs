@@ -253,3 +253,9 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   implant (10), crown (9), bridge (8), jaws (1, 2), canals (3, 4, 103–105), sinuses (5, 6), pharynx
   (7). No label for fillings, root canal fillings or condyles. Schema v7.1 has explicit visibility
   fields (`maxilla_scope.maxilla_included`, sinus/condyle `scope`).
+- **Models downloaded (job 614599, HF token from `~/.secrets/hf.env`):** `lucent517/v2v2r_cbct_vqa`
+  @ `065348c6a8ea3da85f6504841246f5ed4a442447` (12.4 GB, released model, smoke test only);
+  `QuantTrio/Qwen3.5-9B-AWQ` @ `938f8e3ef86c9d1e9bec3705e149694c172592f1` (12.4 GB, AWQ base = merge
+  target, source confirmed by Shivam); `Qwen/Qwen3.5-9B` @ `c2022362…` (bf16, training base).
+- **Smoke run submitted (job 614600, approved):** `jobs/smoke_v2v2r.sbatch` on P001, F001, A003,
+  MIG `3g.20gb`; environment test only, no metrics.
