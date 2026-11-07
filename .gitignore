@@ -43,3 +43,8 @@ external/odin2026/vqa/code/fewshot_examples/
 
 # personal Claude Code settings (not shared)
 .claude/settings.local.json
+
+# secrets: never commit any env/token file
+*.env
+*.env.*
+*token*
