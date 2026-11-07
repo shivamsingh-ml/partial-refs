@@ -477,7 +477,13 @@ All CPU. Outputs in `results/audit/<run_id>/`; summary in `reports/REPORT_M1.md`
    count as multi-report), propose the locked test set, 5 folds and LOCO with per-split tables
    (centre mix, multi-report share, key header features). **Stop for Shivam's approval.** Steps
    4–7 that tune anything (thresholds, pooling, parser checks) use the development set only.
-4. **Per-report structured findings (no union).** V2V2R parses each report with Qwen3-14B in two
+4. **Per-report structured findings (no union).** Target vocabulary (decided 2026-11-07): the
+   finding ontology of Lumetti et al. (MICCAI, repo `AImageLab-zip/CBCT-Report`; 15 finding types with
+   tooth/side/quadrant slots and qualifiers), re-implemented in our own code and cited — their files
+   are not copied (no licence stated). Parser = local LLM only (never GPT/external API). Parser check:
+   the union of our per-report findings per case is compared with their released, clinician-validated
+   per-patient labels (internal use only, never redistributed), plus a small manual per-report check
+   by Shivam (~10 reports, on the cluster). V2V2R parses each report with Qwen3-14B in two
    stages and then **union-merges** reports of the same case. We need the **stage-1 per-report**
    output. Locate that code in `external/odin2026/vqa/code/` (`parse_reports_to_gt.py`), add a flag to dump per-report
    findings, or call stage 1 directly. Output one row per (case, report, finding, tooth).
@@ -504,7 +510,10 @@ All CPU. Outputs in `results/audit/<run_id>/`; summary in `reports/REPORT_M1.md`
 ### M2 — Corrected metrics, noise floor, controls
 
 1. `metrics/structured_f1.py`: LLM-free tuple-level P/R/F1 (case, finding, tooth), the
-   **primary** metric for corrections, because propensity is defined per finding type.
+   **primary** metric for corrections, because propensity is defined per finding type. Definitions
+   follow Lumetti et al. (pres-F1, inst-F1, rep-F1, char-acc), re-implemented and cited; our
+   contribution is their propensity-corrected versions. V2V2R outputs are mapped to the ontology
+   transparently (mapping coverage reported).
 2. `metrics/corrected.py`: §2.2 corrected precision, §2.3 recall + sensitivity analysis.
 3. `metrics/noise_floor.py`: §2.4, per metric and per centre.
 4. `metrics/radfact_bridge.py`: RadFact-lite (pinned SHA) as the secondary metric. To correct it,

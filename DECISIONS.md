@@ -280,3 +280,11 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   two-report patients: pres-F1 0.81, inst-F1 0.70, rep-F1 0.67 (a published noise floor / evidence of
   partial references). (5) GT vs predicted masks: char-acc 85.4 → 51.0 (segmentation quality matters).
   Repo files read: README, API directory listings, `ontology.ttl` only (no report or TTL instance text).
+- **Use of Lumetti et al. (Shivam, 2026-11-07):** (1) their finding ontology and metric definitions
+  are the evaluation "ruler" — re-implemented in our code and cited, files not copied (repo states no
+  licence); a published, clinician-designed vocabulary not built around V2V2R is the fairer ruler.
+  (2) Their released per-patient labels may be used **internally** to check our report parser (never
+  redistributed, never presented as our result). (3) Their baseline model is **not** used; V2V2R
+  (+ ablations, controls, our decoder) stays the centrepiece. (4) **Reader-level analysis dropped**
+  (no reader IDs; organisers cannot be contacted); centre level only. HANDOFF M1 step 4 and M2 step 1
+  updated.
