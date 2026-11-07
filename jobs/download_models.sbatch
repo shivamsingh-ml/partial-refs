@@ -12,6 +12,7 @@
 # (HANDOFF §5.3). Each repo is tried independently; failures are reported, not fatal for the others.
 #   released V2V2R model (LoRA merged into AWQ)  lucent517/v2v2r_cbct_vqa  -> models/Qwen3.5-9B-AWQ-dental-cbct-sft
 #   bf16 base for retraining                    Qwen/Qwen3.5-9B           -> models/Qwen3.5-9B
+#   AWQ base (merge target, per Shivam)          QuantTrio/Qwen3.5-9B-AWQ  -> models/Qwen3.5-9B-AWQ
 # Records the resolved commit of each repo for provenance.
 set -euo pipefail
 PROJECT_DIR=/msc/home/ssingh54/partial-refs; cd "$PROJECT_DIR"
@@ -26,7 +27,8 @@ from huggingface_hub import snapshot_download, HfApi
 api = HfApi()
 out = {}
 for repo, local in [("Qwen/Qwen3.5-9B", "models/Qwen3.5-9B"),
-                    ("lucent517/v2v2r_cbct_vqa", "models/Qwen3.5-9B-AWQ-dental-cbct-sft")]:
+                    ("lucent517/v2v2r_cbct_vqa", "models/Qwen3.5-9B-AWQ-dental-cbct-sft"),
+                    ("QuantTrio/Qwen3.5-9B-AWQ", "models/Qwen3.5-9B-AWQ")]:
     try:
         info = api.model_info(repo)
         path = snapshot_download(repo_id=repo, revision=info.sha, local_dir=local)
@@ -38,5 +40,7 @@ for repo, local in [("Qwen/Qwen3.5-9B", "models/Qwen3.5-9B"),
         print("FAILED", repo, type(e).__name__, flush=True)
 os.makedirs("results/env", exist_ok=True)
 json.dump(out, open(f"results/env/models_{os.environ['SLURM_JOB_ID']}.json", "w"), indent=2)
+import sys
+sys.exit(1 if any("error" in v for v in out.values()) else 0)
 PY
 df -h "$PROJECT_DIR" | tail -1; echo "done=$(date -Is)"
