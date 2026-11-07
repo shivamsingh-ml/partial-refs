@@ -40,3 +40,6 @@ external/odin2026/vqa/code/fewshot_examples/
 
 # model weights (never in git)
 /models/
+
+# personal Claude Code settings (not shared)
+.claude/settings.local.json
