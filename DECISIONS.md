@@ -194,3 +194,24 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   5 TF3-only scans; locked test set clean for segmentation and VLM. Within-CV overlap accepted for
   development; per-fold segmentation decided at G3. HANDOFF §6.4 updated (also: role of centre A,
   which has 2 multi-report cases).
+- **Independence check (job 614574, run `20261107-1911-f6a9649-duplicates`, EN, P116/P117/P260/P261
+  excluded):** 984 reports, 369 within-case pairs, **0 flagged** (cosine > 0.9 or Levenshtein
+  > 0.85). Within-case cosine median 0.18 (q95 0.46, max 0.77); a report's nearest *other-case*
+  report has median cosine 0.47 → reader style dominates, pairs are independent writing. 30 reports
+  have a cross-case twin with cosine > 0.9 (templates). Official dataset page: most cases "have
+  exactly two reports redacted by different maxillofacial surgeons with >5 years of experience";
+  EN reports are GPT-5.2 translations, only random subsets clinician-checked (test-set translations
+  reviewed); official counts (625 cases, 1001 reports, max 3 per case) differ from our download
+  (622, 1000, four cases with 4) → different release version; to ask Shivam which. File naming
+  is not documented, so `report_x` = reader stays a hypothesis.
+- **TF3 ↔ TF4 scan identity and orientation (job 614578, run `20261107-1920-2bf3051-tf3-link`):**
+  all 527 P/F/S TF4 volumes are **voxel-identical** to `ToothFairy3<C>_<id>_0000` after flipping the
+  TF3 array on axes 1 and 2 (y, z); headers: TF4 LAS, TF3 LPS (headers only differ in y → the z flip
+  is unrecorded). TF3 labels lie on the TF3 image grid (527/527). Anatomy with TF3 labels in each
+  header's RAS world: upper jaw above lower jaw in TF4 frame for 224/228 testable cases (TF3 frame:
+  4/228) → **TF4 headers are right for superior/inferior; TF3's are upside down.** Exceptions, all
+  centre S: S0002, S0004, S0015, S0034 (TF4 frame says upper below lower) → visual check needed.
+  Left canal (label 3) at larger world x than right canal (4) in 527/527 cases in both frames →
+  either both headers mirror left/right or TF3 names sides from the viewer; unresolved — test later
+  by report-vs-mask laterality agreement (FDI quadrants). **To use TF3 masks on TF4 scans: flip
+  label arrays on axes 1 and 2, then use the TF4 affine.** 299 cases lack jaw labels.
