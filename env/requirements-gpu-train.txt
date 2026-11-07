@@ -1,0 +1,15 @@
+# GPU env `pr_train`: LoRA SFT with the submitted training code (vqa/code/train_vision_lora.py).
+# The image does not pin a training stack; these pins are V2V2R's documented training env
+# (.cache/v2v2R-reference/env/container_requirements.txt: "training torch ==2.11.0
+# transformers ==5.9.0"). Do NOT install gptqmodel (patches Triton globally; breaks Qwen3.5's
+# GatedDeltaNet fla kernels; peft imports it if present).
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.11.0
+torchvision==0.26.0
+transformers==5.9.0
+peft==0.20.0
+accelerate==1.13.0
+flash-linear-attention==0.5.2
+safetensors
+pillow==12.2.0
+numpy
