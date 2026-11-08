@@ -351,3 +351,14 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   touch neither top nor posterior face; quadrant findings: jaw in the scan (label or teeth). Open risks
   noted by the reviewer: tooth-level laterality of TF3 masks (test via `--mirror-teeth`, compare
   mentions on invisible slots); pooling over slots/centres biases n=2 π upwards (conservative for T2).
+- **TF3 tooth masks are left/right mirrored relative to the reports' FDI numbers (T2 laterality check,
+  2026-11-08).** Same parse (v2, Qwen3-14B, run `results/extract/20261108-2311-8113799-parse-qwen3-14b-n0-614989`),
+  same visibility features; only `--mirror-teeth` differs. Reported findings on teeth the mask calls
+  absent, normal → mirrored: EndodonticTreatment 279 → 86, ConservativeRestoration 167 → 28,
+  ToothDevelopmentPathology 240 → 83, PeriapicalLesion 70 → 34, Caries 36 → 9 (arch-level types
+  unchanged, as expected). Mirrored is clearly right → for P/F/S (TF3-derived masks) tooth IDs are
+  mirrored (1↔2, 3↔4) before any comparison with reports. Centre A (our own predicted masks) is not
+  mirrored until checked the same way. Canal/sinus sides are not mirrored yet (canal is visible on both
+  sides in nearly all cases, so this check cannot tell). π changes ≤ 0.015 for every type (pooling hides
+  it), but per-slot analyses (T3) need the mirror. Evidence:
+  `results/propensity/20261108-2349-66fd4d1-propensity-gt-v2{,-mirror}/summary.json`.
