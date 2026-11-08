@@ -15,7 +15,7 @@
 # server log is only ever grepped for errors.
 #   sbatch jobs/parse_reports.sbatch LIMIT_CASES LANGS [MODEL_DIR] [SERVED_NAME]
 #   e.g. sbatch jobs/parse_reports.sbatch 5 en            (diagnostic)
-#        sbatch jobs/parse_reports.sbatch 50 en,it        (bake-off subset)
+#        REPEAT=1 sbatch --export=ALL jobs/parse_reports.sbatch 50 en,it   (subset + IT + run-to-run check)
 #        sbatch jobs/parse_reports.sbatch 0 en,it         (all reports)
 set -euo pipefail
 PROJECT_DIR=/msc/home/ssingh54/partial-refs; cd "$PROJECT_DIR"
@@ -53,6 +53,14 @@ for L in ${LANGS//,/ }; do
   python -m partialref.extract.score_parser --ours "$RUN/instances_$L.parquet" --lumetti "$LUMETTI" \
     --exclude "$EXCLUDE" --tag "parser-check-${NAME}-${L}-n${LIMIT}"
 done
+if [[ "${REPEAT:-0}" == "1" && ",$LANGS," == *",en,"* ]]; then
+  echo "--- run-to-run check: second EN pass (temperature 0), scored against the first"
+  mkdir -p "$RUN/repeat"
+  python -m partialref.extract.per_report --manifest "$MANIFEST" --lang en --server "http://127.0.0.1:$PORT" \
+    --model "$NAME" --model-path "$MODEL_DIR" --limit-cases "$LIMIT" --out-dir "$RUN/repeat"
+  python -m partialref.extract.score_parser --ours "$RUN/repeat/instances_en.parquet" --lumetti "$RUN/instances_en.parquet" \
+    --exclude "$EXCLUDE" --tag "repeat-en-${NAME}-n${LIMIT}"
+fi
 if [[ ",$LANGS," == *",en,"* && ",$LANGS," == *",it,"* ]]; then
   echo "--- translation check: EN extractions scored against IT extractions (same parser)"
   python -m partialref.extract.score_parser --ours "$RUN/instances_en.parquet" --lumetti "$RUN/instances_it.parquet" \
