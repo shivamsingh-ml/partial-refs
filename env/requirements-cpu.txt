@@ -17,6 +17,7 @@ datasketch
 nibabel
 SimpleITK
 pyyaml
+rdflib          # read Lumetti et al. per-patient labels (Turtle) for the parser check
 pydantic>=2
 matplotlib
 pytest

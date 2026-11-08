@@ -52,6 +52,7 @@ python-discovery==1.9.5
 PyYAML==6.0.3
 radfact-lite @ git+https://github.com/AImageLab-zip/radfact_lite@053f680be1c57225f94d67b198a34aa871b1127d
 RapidFuzz==3.14.6
+rdflib==7.6.0
 regex==2026.11.7
 ruff==0.17.4
 scikit-learn==1.9.1
