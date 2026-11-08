@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -26,6 +27,12 @@ def prf(tp: int, fp: int, fn: int) -> dict:
     r = tp / (tp + fn) if tp + fn else float("nan")
     f = 2 * p * r / (p + r) if (p == p and r == r and p + r) else float("nan")
     return {"tp": tp, "fp": fp, "fn": fn, "precision": p, "recall": r, "f1": f}
+
+
+def parser_half(case_id: str) -> str:
+    """Fixed split of cases for parser development (decided 2026-11-08): 'tune' cases may be inspected
+    to change the prompt; T1 is reported on 'heldout'. Stable hash, independent of run order."""
+    return "tune" if int(hashlib.sha256(f"parser-split:{case_id}".encode()).hexdigest(), 16) % 2 == 0 else "heldout"
 
 
 def score(ours: pd.DataFrame, ref: pd.DataFrame, level: str) -> pd.DataFrame:
@@ -49,17 +56,21 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--exclude", type=lambda s: [x for x in s.split(",") if x], default=[])
     ap.add_argument("--results-dir", default=Path("results"), type=Path)
     ap.add_argument("--tag", default="parser-check")
+    ap.add_argument("--half", choices=["all", "tune", "heldout"], default="all")
     a = ap.parse_args(argv)
     ours = pd.read_parquet(a.ours)
     ref = pd.read_parquet(a.lumetti)
     ours, ref = ours[~ours.case_id.isin(a.exclude)], ref[~ref.case_id.isin(a.exclude)]
+    if a.half != "all":
+        ours = ours[ours.case_id.map(parser_half) == a.half]
+        ref = ref[ref.case_id.map(parser_half) == a.half]
     res = pd.concat([score(ours, ref, "type"), score(ours, ref, "slot")], ignore_index=True)
     run_id = make_run_id(a.tag)
     out = a.results_dir / "extract" / run_id
     out.mkdir(parents=True, exist_ok=False)
     res.to_csv(out / "parser_vs_lumetti.csv", index=False)
     slot = res[res.level == "slot"].set_index("finding_type")
-    summary = {"run_id": run_id, "n_cases": int(res["n_cases"].iloc[0]), "excluded": a.exclude,
+    summary = {"run_id": run_id, "half": a.half, "n_cases": int(res["n_cases"].iloc[0]), "excluded": a.exclude,
                "slot_f1": slot["f1"].round(3).to_dict(), "slot_n_ref": slot["n_ref"].to_dict()}
     (out / "summary.json").write_text(json.dumps(summary, indent=2, default=str))
     write_provenance(out, extra={"run_id": run_id, "ours": str(a.ours), "lumetti": str(a.lumetti)})

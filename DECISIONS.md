@@ -304,3 +304,18 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   Italian, so manual checks must be in English); translation noise measured automatically by parsing
   the Italian originals too and comparing per-report findings. Few-shot examples synthetic (written by
   Claude). GT thresholds are guidance; decision after seeing the numbers, reasoning recorded.
+- **Parser T1 first run (job 614962, Qwen3-14B, parser v1, 2026-11-08):** 1000 EN + 1000 IT + EN repeat;
+  16/15 reports truncated at 2048 output tokens. Slot-level F1 vs Lumetti (EN, 519 cases): 0.817 overall
+  (type level 0.917); ≥0.90 only for canal 0.977, restorations 0.940, endodontic 0.933 (caries 0.889).
+  Run-to-run F1 0.985 (negligible vs ~0.70 inter-reader). EN vs IT 0.858 (EN matches Lumetti better than
+  IT: 0.817 vs 0.796). Diagnostics (`partialref.extract.parser_diagnostics`, `convention_checks`, counts
+  only) → mostly convention mismatches: Lumetti codes tooth-specific periodontal defects as
+  ToothDevelopmentPathology; pontics as ToothAbsence + ProstheticDevice with contiguous spans; edentulous
+  arch = all 16 teeth absent; their quadrants/canal sides agree with FDI digits (96/96, 349/357) while our
+  parser never attached teeth to side findings (mirrored misses: canal 31/37, quadrant 49/77); plus parser
+  over-calls of condyles (15 in P/F/S), sinus findings and planned implants. → parser v2 prompt (commit
+  7e79d28), 4096-token limit.
+- **Parser development split (2026-11-08):** cases hashed into 'tune' and 'heldout' halves
+  (`score_parser.parser_half`); further prompt changes may only look at 'tune'; T1 is reported on
+  'heldout'. v1 baseline slot F1: tune 0.805, heldout 0.830. (v2 rules were derived from aggregate
+  counts over all cases — modest leakage, stated.)

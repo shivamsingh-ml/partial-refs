@@ -50,8 +50,10 @@ set +u; source "$HOME/miniconda3/etc/profile.d/conda.sh"; conda activate cbct_pa
 for L in ${LANGS//,/ }; do
   python -m partialref.extract.per_report --manifest "$MANIFEST" --lang "$L" --server "http://127.0.0.1:$PORT" \
     --model "$NAME" --model-path "$MODEL_DIR" --limit-cases "$LIMIT" --out-dir "$RUN"
-  python -m partialref.extract.score_parser --ours "$RUN/instances_$L.parquet" --lumetti "$LUMETTI" \
-    --exclude "$EXCLUDE" --tag "parser-check-${NAME}-${L}-n${LIMIT}"
+  for H in tune heldout; do
+    python -m partialref.extract.score_parser --ours "$RUN/instances_$L.parquet" --lumetti "$LUMETTI" \
+      --exclude "$EXCLUDE" --half "$H" --tag "parser-check-${NAME}-${L}-n${LIMIT}-${H}"
+  done
 done
 if [[ "${REPEAT:-0}" == "1" && ",$LANGS," == *",en,"* ]]; then
   echo "--- run-to-run check: second EN pass (temperature 0), scored against the first"
