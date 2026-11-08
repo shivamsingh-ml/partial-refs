@@ -418,7 +418,29 @@ extent (mm), sha256 of each file. Every later run records the manifest hash.
 
 ## 7. Milestones
 
-Order: M0 → M0.5 (can run in parallel with M0) → M1 → G1 → M2 → G2 → M3 → G3 → M4 → G4 → M5/M6.
+Order (revised 2026-11-08): M0 → **GT (go/no-go test)** → M0.5 → M1 → G1 → M2 → G2 → M3 → G3 → M4 → G4 → M5/M6.
+**No V2V2R retraining, segmentation retraining or decoder work before the GT decision.**
+
+### GT — Go/no-go test (before any further heavy compute)
+
+Purpose: answer cheaply whether (i) reader disagreement is mostly *omission* and (ii) the effect is
+large enough to change conclusions. Budget: ≤ 3 GPU-hours (parser) + CPU. Uses provisional
+visibility (tier 1–2 rules of §2.6 with simple thresholds, recorded in DECISIONS.md); the final
+thresholds are frozen later in M1. Thresholds below are **proposals until Shivam (and supervisor)
+confirm them**.
+
+| Test | What | Pass if |
+| --- | --- | --- |
+| T1 Parser | Local LLM parses all 1000 reports (Lumetti ontology); union per case vs Lumetti's released per-patient labels (P/F/S); manual check of 10 reports by Shivam | finding-type+slot F1 ≥ 0.90 for ≥ 6 common finding types (≥ 100 instances); no systematic error in the manual check |
+| T2 Propensity | π per common finding type, pooled over centres, visible instances, double-read cases (excl. P116/P117/P260/P261), bootstrap CIs | ≥ 3 finding types with upper 95 % CI of π < 0.90 and CI width ≤ 0.30 |
+| T3 Mask agreement | Tier-1 findings (missing teeth, implants, crowns/bridges): π from two readers vs π measured against TF3 masks; false-mention rate φ vs masks | CIs overlap for ≥ 2 of 3 types and φ ≤ 0.05 |
+| T4 Effect size | Plug estimated (p, π) into a simulated scoring of realistic systems (a conservative and a complete one) | corrected − raw precision ≥ 5 points for common types, and/or the ranking of the two systems flips |
+
+Decision rules: all pass → continue with M0.5/M1/M2/M3 as planned. **T1 fails** → fix the parser first
+(nothing else is interpretable). **T3 fails** → disagreement is not mainly omission: switch to a
+false-positive-aware model (φ from masks / 3-report cases) and partial-identification bounds (§12.5 D).
+**T2 or T4 fails** (π ≈ 1 or tiny effect) → pivot to a measurement/benchmark-analysis paper on
+reference incompleteness, with V2V2R improvements as the second pillar. Report: `reports/REPORT_GT.md`.
 
 ### M0 — Setup and smoke test
 

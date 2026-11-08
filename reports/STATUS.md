@@ -21,7 +21,9 @@ Read HANDOFF.md (rules, plan) and DECISIONS.md (evidence) first. This file is on
 - **Centre A segmentation**: diagnostic (job 614609, 3 cases; first two fine) then full 95 cases
   (job 614610, queued with `afterok`) → `results/seg/centreA_umamba2_foldall/masks/` (resumable).
 
-## Next (Monday), in order
+## Next (Monday), in order — revised 2026-11-08: GO/NO-GO TEST FIRST (HANDOFF §7 GT)
+0. Confirm GT thresholds and parser decisions with Shivam; then T1 parser → T2 π → T3 masks → T4 effect size.
+   Visibility (steps 1–2) is needed for T2/T3 in provisional form; the split (step 3) waits until after GT.
 1. Check both jobs (`sacct`, logs in `logs/`). If the A segmentation finished, add an A adapter to
    `partialref.audit.visibility_features` (predicted masks are already on the TF4 grid: no flip;
    pulp = 199) and run it for A.

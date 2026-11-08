@@ -293,3 +293,10 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   (`umamba2` env), facts, vLLM 0.19 (`pr_serve`) + VQA + report, `competition_runner exited 0`
   (`VLM_OK`) for all three, fallback disabled; 5.0–6.6 min/case; valid JSON reports (91–103 words).
   No metrics computed. Note: segmentation alone runs fine on a MIG slice; vLLM needs a full GPU.
+- **Go/no-go test GT inserted before further heavy compute (Shivam, 2026-11-08).** Prompted by an
+  honest risk review: (1) two-reader disagreement may be partly false calls / interpretation, not
+  omission (only masks can check, tier 1 only); (2) parser errors mimic omission; (3) per-finding
+  counts allow solid π only for ~6–8 common finding types pooled over centres; (4) "so what" risk if
+  no conclusion changes. GT = parser check (T1), π estimates (T2), mask agreement (T3), effect size
+  (T4), with proposed pass/fail thresholds and decision rules in HANDOFF §7 (GT). No V2V2R/segmentation
+  retraining or decoder work until the GT decision. Thresholds are proposals until confirmed.
