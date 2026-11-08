@@ -38,7 +38,7 @@ def _post(url: str, body: dict, timeout: int = 300) -> dict:
 
 def request_body(model: str, report_text: str, mode: str) -> dict:
     body = {"model": model, "messages": messages(report_text), "temperature": 0.0,
-            "max_tokens": 2048, "chat_template_kwargs": {"enable_thinking": False}}
+            "max_tokens": 4096, "chat_template_kwargs": {"enable_thinking": False}}
     schema = json_schema()
     if mode == "response_format":
         body["response_format"] = {"type": "json_schema",
@@ -100,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--results-dir", default=Path("results"), type=Path)
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--tag", default="parse")
+    ap.add_argument("--retry-errors", action="store_true", help="re-parse reports whose stored result failed")
     a = ap.parse_args(argv)
 
     reps = pd.read_parquet(a.manifest / "reports.parquet")
@@ -119,7 +120,9 @@ def main(argv: list[str] | None = None) -> int:
     def work(row) -> dict:
         dst = out / "per_report" / f"{row.case_id}__{row.report_id}__{a.lang}.json"
         if dst.exists():
-            return json.loads(dst.read_text())["meta"]
+            prev = json.loads(dst.read_text())
+            if prev["extraction"] is not None or not a.retry_errors:
+                return prev["meta"]
         text = Path(row.path).read_text(encoding="utf-8", errors="replace")
         ext, meta = extract_one(a.server, a.model, text, mode)
         meta.update(case_id=row.case_id, report_id=row.report_id, lang=a.lang,

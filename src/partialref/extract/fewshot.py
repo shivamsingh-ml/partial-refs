@@ -15,25 +15,37 @@ SYSTEM_PROMPT = f"""You convert ONE dental CBCT radiology report into structured
 Return only JSON that matches the given schema: {{"findings": [...], "not_assessable": [...]}}.
 
 Finding types (choose exactly one per finding) and their anchor:
-- ToothAbsence (tooth_ids): tooth missing (extracted, agenesis). NOT for impacted/unerupted teeth
-  (use ToothDevelopmentPathology) and NOT where a root residue remains (use RootResidue).
-- ToothDevelopmentPathology (tooth_ids): impacted, semi-included, unerupted, ectopic, supernumerary,
-  deciduous/retained primary teeth, incomplete root formation. Use eruption_status, bone_inclusion,
-  tooth_orientation, development_feature.
-- Caries (tooth_ids). PeriapicalLesion (tooth_ids). RootResidue (tooth_ids).
+- ToothAbsence (tooth_ids): tooth missing (extracted, agenesis), including pontic positions of a bridge.
+  A FULLY EDENTULOUS arch = ToothAbsence for all 16 teeth of that arch (11-18 and 21-28, or 31-38 and
+  41-48). NOT for impacted/unerupted teeth (ToothDevelopmentPathology), NOT where a root residue
+  remains (RootResidue), and NEVER for teeth or arches that are not visible / not included in the scan.
+- ToothDevelopmentPathology (tooth_ids): (a) impacted, semi-included, unerupted, ectopic,
+  supernumerary, retained primary teeth, incomplete root formation (eruption_status, bone_inclusion,
+  tooth_orientation, development_feature); (b) TOOTH-SPECIFIC periodontal defects: vertical bone
+  defect, bone loss / resorption around a named tooth, furcation involvement, pericoronal resorption
+  (periodontal_feature, severity).
+- Caries (tooth_ids). PeriapicalLesion (tooth_ids): lesion at the root apex. RootResidue (tooth_ids).
 - EndodonticTreatment (tooth_ids): root canal filling; treatment_quality if stated.
 - ConservativeRestoration (tooth_ids): filling / composite / amalgam restoration.
-- ProstheticDevice (tooth_ids): crown, bridge (list EVERY tooth of the span), post-and-core,
-  healing abutment, removable prosthesis, orthodontic appliance; use prosthesis_type.
-- DentalImplant (tooth_ids): implant at a tooth position.
+- ProstheticDevice (tooth_ids): crown, bridge, post-and-core, healing abutment, removable prosthesis,
+  orthodontic appliance; ONE prosthesis_type per finding (crown + post-and-core = two findings).
+  A bridge lists EVERY tooth from the first to the last abutment, pontics included; each pontic
+  position is ALSO a ToothAbsence.
+- DentalImplant (tooth_ids): an implant that IS PRESENT. Planned implants or sites "suitable for an
+  implant" are NOT findings.
 - PostExtractionSocket (tooth_ids): recent extraction socket.
 - MandibularCanalCourse (side): course of the inferior alveolar canal; canal_trajectory,
-  canal_tooth_contact; add tooth_ids of teeth in contact if stated.
-- MandibularCondyleFinding (side): ONLY abnormal condyles (flattening, erosion, osteophyte,
-  asymmetry, remodelling). A normal condyle is not a finding.
-- MaxillarySinusFinding (side): mucosal thickening, cyst, opacification, other sinus pathology.
-- JawAtrophy (quadrant): alveolar bone atrophy / resorption; severity, periodontal_feature.
-- PathologicalLesion (quadrant): bone lesions not tied to one apex (cysts, osteosclerosis, ...).
+  canal_tooth_contact; ALWAYS add tooth_ids of the teeth it relates to when they are named. Canal
+  contact qualifiers belong ONLY here, never on other types.
+- MandibularCondyleFinding (side): ONLY explicitly abnormal condyles (flattening, erosion, osteophyte,
+  asymmetry, remodelling). Normal, regular, not visible or not mentioned condyles = NO finding.
+- MaxillarySinusFinding (side): ONLY explicit sinus pathology (mucosal thickening, cyst,
+  opacification, polyp). A normal / well-aerated sinus = NO finding.
+- JawAtrophy (quadrant): generalised alveolar bone atrophy / resorption of a region (not tied to one
+  tooth); severity, periodontal_feature; add tooth_ids if teeth are named.
+- PathologicalLesion (quadrant): bone lesions not at a root apex: cysts, tumours, osteosclerosis,
+  condensing osteitis, other radiolucent/radiopaque lesions. Periodontal or alveolar bone loss is NOT a
+  PathologicalLesion (use JawAtrophy or ToothDevelopmentPathology).
 
 Rules:
 - Teeth use FDI two-digit numbers: permanent 11-48, primary 51-85. Expand ranges: "from 14 to 16"
@@ -45,6 +57,8 @@ Rules:
   canal_left, canal_right, upper_teeth, lower_teeth, other), never to findings.
 - Quadrants: QuadrantI upper right (1x), QuadrantII upper left (2x), QuadrantIII lower left (3x),
   QuadrantIV lower right (4x). Sides: Left / Right of the patient.
+- When tooth numbers are named, DERIVE side / quadrant FROM THE NUMBERS (canal with 3x teeth = Left,
+  4x = Right; quadrant from the first digit), not from words like "left"/"right".
 - Use only these qualifier names and values: {json.dumps(QUALIFIERS, separators=(",", ":"))}
 - Do not invent findings that the report does not state."""
 
@@ -53,7 +67,8 @@ FEWSHOT = [
         "CBCT of both arches. Teeth 18, 28, 36 and 46 are missing. Tooth 38 is impacted, "
         "mesioangulated and fully included in bone; its roots are in close relationship with the "
         "left mandibular canal, which runs lingually. Root canal treatment on 26, reaching the "
-        "apex, with a periapical radiolucency. Composite restorations on 15 and 16. No caries. "
+        "apex, with a periapical radiolucency. Moderate vertical bone defect at 47. Composite "
+        "restorations on 15 and 16. No caries. "
         "Condyles regular. The right maxillary sinus shows mild mucosal thickening.",
         {"findings": [
             {"finding_type": "ToothAbsence", "tooth_ids": ["18", "28", "36", "46"]},
@@ -67,6 +82,8 @@ FEWSHOT = [
              "qualifiers": {"treatment_quality": ["ReachesApex"]}},
             {"finding_type": "PeriapicalLesion", "tooth_ids": ["26"],
              "qualifiers": {"radiodensity": ["Radiolucent"]}},
+            {"finding_type": "ToothDevelopmentPathology", "tooth_ids": ["47"],
+             "qualifiers": {"periodontal_feature": ["VerticalDefect"], "severity": ["Moderate"]}},
             {"finding_type": "ConservativeRestoration", "tooth_ids": ["15", "16"]},
             {"finding_type": "MaxillarySinusFinding", "side": "Right",
              "qualifiers": {"severity": ["Mild"]}}],
@@ -80,6 +97,7 @@ FEWSHOT = [
         {"findings": [
             {"finding_type": "ProstheticDevice", "tooth_ids": ["44", "45", "46"],
              "qualifiers": {"prosthesis_type": ["FixedBridge"]}},
+            {"finding_type": "ToothAbsence", "tooth_ids": ["45"]},
             {"finding_type": "DentalImplant", "tooth_ids": ["36"]},
             {"finding_type": "RootResidue", "tooth_ids": ["47"]},
             {"finding_type": "JawAtrophy", "quadrant": "QuadrantIII",
@@ -105,6 +123,23 @@ FEWSHOT = [
             {"finding_type": "ToothDevelopmentPathology", "tooth_ids": ["63"],
              "qualifiers": {"development_feature": ["Deciduous"]}}],
          "not_assessable": ["condyle_left", "condyle_right"]},
+    ),
+    (
+        "Edentulous lower arch with severe generalised atrophy of the posterior mandible. Upper arch: "
+        "teeth 17 and 27 are missing; healing abutment on 24; the area of 26 is suitable for implant "
+        "placement. Maxillary sinuses well aerated. Condyles symmetric and regular. The right "
+        "mandibular canal runs superficially below the ridge in the region of 45 and 46.",
+        {"findings": [
+            {"finding_type": "ToothAbsence", "tooth_ids": ["31", "32", "33", "34", "35", "36", "37", "38",
+                                                           "41", "42", "43", "44", "45", "46", "47", "48"]},
+            {"finding_type": "JawAtrophy", "quadrant": "QuadrantIII", "qualifiers": {"severity": ["Severe"]}},
+            {"finding_type": "JawAtrophy", "quadrant": "QuadrantIV", "qualifiers": {"severity": ["Severe"]}},
+            {"finding_type": "ToothAbsence", "tooth_ids": ["17", "27"]},
+            {"finding_type": "ProstheticDevice", "tooth_ids": ["24"],
+             "qualifiers": {"prosthesis_type": ["HealingAbutment"]}},
+            {"finding_type": "MandibularCanalCourse", "side": "Right", "tooth_ids": ["45", "46"],
+             "qualifiers": {"canal_trajectory": ["Superficialized"]}}],
+         "not_assessable": []},
     ),
 ]
 
