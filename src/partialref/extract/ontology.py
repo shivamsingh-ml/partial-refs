@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (BaseModel, ConfigDict, Field, StringConstraints, create_model, field_validator,
+                      model_validator)
 
 
 class FindingType(str, Enum):
@@ -96,37 +97,36 @@ NotAssessableStructure = Literal[
     "canal_left", "canal_right", "upper_teeth", "lower_teeth", "other"]
 
 
+def _qual_field(name: str):
+    """List of allowed values; single-valued qualifiers allow at most one entry. Encoded in the JSON
+    schema (enum + maxItems) so that guided decoding cannot produce invalid qualifiers."""
+    lit = Literal[tuple(QUALIFIERS[name])]  # type: ignore[valid-type]
+    return (list[lit], Field(default_factory=list, max_length=None if name in MULTI_VALUED else 1))
+
+
+Qualifiers = create_model(
+    "Qualifiers", __config__=ConfigDict(extra="forbid"),
+    **{name: _qual_field(name) for name in QUALIFIERS},
+)
+
+FDIStr = Annotated[str, StringConstraints(pattern=FDI_RE.pattern)]
+
+
 class Finding(BaseModel):
     model_config = ConfigDict(extra="forbid")
     finding_type: FindingType
-    tooth_ids: list[str] = Field(default_factory=list)
+    tooth_ids: list[FDIStr] = Field(default_factory=list)
     side: Side | None = None
     quadrant: Quadrant | None = None
-    qualifiers: dict[str, list[str]] = Field(default_factory=dict)
+    qualifiers: Qualifiers = Field(default_factory=Qualifiers)  # type: ignore[valid-type]
 
     @field_validator("tooth_ids")
     @classmethod
     def _fdi(cls, v: list[str]) -> list[str]:
-        bad = [t for t in v if not FDI_RE.match(str(t))]
-        if bad:
-            raise ValueError(f"invalid FDI ids: {bad}")
         return sorted(set(map(str, v)))
 
-    @field_validator("qualifiers")
-    @classmethod
-    def _quals(cls, v: dict[str, list[str]]) -> dict[str, list[str]]:
-        out = {}
-        for k, vals in v.items():
-            if k not in QUALIFIERS:
-                raise ValueError(f"unknown qualifier: {k}")
-            vals = [vals] if isinstance(vals, str) else list(vals)
-            bad = [x for x in vals if x not in QUALIFIERS[k]]
-            if bad:
-                raise ValueError(f"invalid values for {k}: {bad}")
-            if len(vals) > 1 and k not in MULTI_VALUED:
-                raise ValueError(f"{k} is single-valued")
-            out[k] = vals
-        return out
+    def qualifier_dict(self) -> dict[str, list[str]]:
+        return {k: list(v) for k, v in self.qualifiers.model_dump().items() if v}
 
     @model_validator(mode="after")
     def _slot(self) -> Finding:

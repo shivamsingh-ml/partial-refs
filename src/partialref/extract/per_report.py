@@ -43,8 +43,8 @@ def request_body(model: str, report_text: str, mode: str) -> dict:
     if mode == "response_format":
         body["response_format"] = {"type": "json_schema",
                                    "json_schema": {"name": "report_extraction", "schema": schema}}
-    else:  # older vLLM spelling
-        body["guided_json"] = schema
+    else:  # vLLM's own spelling (installed 0.19: structured_outputs; 'guided_json' no longer exists)
+        body["structured_outputs"] = {"json": schema}
     return body
 
 
@@ -70,12 +70,20 @@ def extract_one(server: str, model: str, text: str, mode: str) -> tuple[ReportEx
 
 
 def detect_mode(server: str, model: str) -> str:
-    """Use response_format if the server accepts it, else guided_json (version-dependent API)."""
-    for mode in ("response_format", "guided_json"):
-        ext, meta = extract_one(server, model, "Implant in position 36. No other findings.", mode)
-        if ext is not None:
+    """Pick the structured-output spelling the server accepts. Success = HTTP 200 and valid JSON
+    (our stricter ontology validation is NOT required here, so one odd answer cannot abort a run)."""
+    reasons = {}
+    for mode in ("response_format", "structured_outputs"):
+        try:
+            resp = _post(f"{server}/v1/chat/completions",
+                         request_body(model, "Implant in position 36. No other findings.", mode), timeout=600)
+            json.loads(resp["choices"][0]["message"]["content"])
             return mode
-    raise RuntimeError("server accepted neither structured-output spelling")
+        except urllib.error.HTTPError as e:
+            reasons[mode] = f"http {e.code}"
+        except Exception as e:  # noqa: BLE001
+            reasons[mode] = type(e).__name__
+    raise RuntimeError(f"server accepted neither structured-output spelling: {reasons}")
 
 
 def main(argv: list[str] | None = None) -> int:
