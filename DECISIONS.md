@@ -319,3 +319,8 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   (`score_parser.parser_half`); further prompt changes may only look at 'tune'; T1 is reported on
   'heldout'. v1 baseline slot F1: tune 0.805, heldout 0.830. (v2 rules were derived from aggregate
   counts over all cases — modest leakage, stated.)
+- **Lumetti ontology version (2026-11-08):** paper = 13 finding types (5,703 instances); released
+  ontology (repo commit e809ec3) = 15 types (adds ToothAbsence, MandibularCondyleFinding); released labels
+  = 14 types occurring, 7,434 findings = 5,703 + 1,731 ToothAbsence (exact) → labels regenerated with
+  the extended ontology (our inference from the counts); no condyle findings (condyles outside the thin
+  TF3 scans). We use and cite the released version.
