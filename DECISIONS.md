@@ -324,3 +324,10 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   = 14 types occurring, 7,434 findings = 5,703 + 1,731 ToothAbsence (exact) → labels regenerated with
   the extended ontology (our inference from the counts); no condyle findings (condyles outside the thin
   TF3 scans). We use and cite the released version.
+- **Lumetti repo has no licence → handling (2026-11-08):** default all-rights-reserved. We use ideas,
+  metric definitions and the finding vocabulary with citation; our code, prompt and examples are
+  independent (their extract.py, extraction_guide.ttl, example_*.ttl, shapes.ttl and src/ were never
+  opened). Their unused files were removed from the cluster copy (`~/Datasets/CBCT-Report`, sparse
+  checkout now `data/ttl_reports` only). Their labels: internal parser check only, never redistributed,
+  only aggregate agreement reported. Conservative fallback if needed: manual 30-report parser check.
+  Attribution added to `src/partialref/extract/fewshot.py`.

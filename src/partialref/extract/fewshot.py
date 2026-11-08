@@ -3,6 +3,12 @@
 ALL example reports below are SYNTHETIC: written for this project in the general style of dental
 CBCT reports, not taken or paraphrased from any ToothFairy report (DUA: real report text is never
 committed). Their expected outputs follow partialref.extract.ontology.
+
+Attribution: the finding types, anchors, qualifier values and several definitions used in the prompt
+follow the finding ontology of Lumetti et al. (MICCAI 2026, "Ontology-Grounded Structured Prediction for
+Dental CBCT Reporting"); the coding conventions (bridges, tooth-level periodontal defects, edentulous
+arches) were measured from their released labels. Their repository states no licence: none of their
+files (code, prompts, examples) were opened or copied; this prompt and its examples are our own.
 """
 
 from __future__ import annotations
