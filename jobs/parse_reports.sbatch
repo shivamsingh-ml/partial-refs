@@ -36,7 +36,7 @@ VLLM=$HOME/miniconda3/envs/pr_serve/bin/vllm
 NOLOG=""; "$VLLM" serve --help=all 2>/dev/null | grep -q -- "--disable-log-requests" && NOLOG="--disable-log-requests"
 echo "request-logging flag: ${NOLOG:-<none; default off in this version or unsupported>}"
 "$VLLM" serve "$MODEL_DIR" --served-model-name "$NAME" --port "$PORT" --host 127.0.0.1 \
-  --max-model-len 16384 --gpu-memory-utilization 0.92 --dtype bfloat16 $NOLOG > "$RUN/vllm_server.log" 2>&1 &
+  --max-model-len 16384 --gpu-memory-utilization 0.92 --dtype auto $NOLOG > "$RUN/vllm_server.log" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null || true' EXIT
 for i in $(seq 1 120); do

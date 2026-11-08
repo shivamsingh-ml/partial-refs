@@ -36,9 +36,11 @@ def _post(url: str, body: dict, timeout: int = 300) -> dict:
         return json.loads(r.read())
 
 
-def request_body(model: str, report_text: str, mode: str) -> dict:
+def request_body(model: str, report_text: str, mode: str, repetition_penalty: float | None = None) -> dict:
     body = {"model": model, "messages": messages(report_text), "temperature": 0.0,
             "max_tokens": 4096, "chat_template_kwargs": {"enable_thinking": False}}
+    if repetition_penalty:
+        body["repetition_penalty"] = repetition_penalty   # vLLM sampling extra; used only on retry
     schema = json_schema()
     if mode == "response_format":
         body["response_format"] = {"type": "json_schema",
@@ -48,11 +50,12 @@ def request_body(model: str, report_text: str, mode: str) -> dict:
     return body
 
 
-def extract_one(server: str, model: str, text: str, mode: str) -> tuple[ReportExtraction | None, dict]:
+def extract_one(server: str, model: str, text: str, mode: str,
+                repetition_penalty: float | None = None) -> tuple[ReportExtraction | None, dict]:
     t0 = time.time()
-    meta: dict = {}
+    meta: dict = {"repetition_penalty": repetition_penalty}
     try:
-        resp = _post(f"{server}/v1/chat/completions", request_body(model, text, mode))
+        resp = _post(f"{server}/v1/chat/completions", request_body(model, text, mode, repetition_penalty))
         content = resp["choices"][0]["message"]["content"]
         meta.update(prompt_tokens=resp.get("usage", {}).get("prompt_tokens"),
                     completion_tokens=resp.get("usage", {}).get("completion_tokens"),
@@ -101,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--tag", default="parse")
     ap.add_argument("--retry-errors", action="store_true", help="re-parse reports whose stored result failed")
+    ap.add_argument("--retry-repetition-penalty", type=float, default=1.1,
+                    help="on a failed parse, retry once with this repetition penalty (0 = off)")
     a = ap.parse_args(argv)
 
     reps = pd.read_parquet(a.manifest / "reports.parquet")
@@ -125,6 +130,11 @@ def main(argv: list[str] | None = None) -> int:
                 return prev["meta"]
         text = Path(row.path).read_text(encoding="utf-8", errors="replace")
         ext, meta = extract_one(a.server, a.model, text, mode)
+        if ext is None and a.retry_repetition_penalty:
+            # degenerate repetition loops (hit max_tokens on normal-length reports) -> one retry
+            ext, meta2 = extract_one(a.server, a.model, text, mode, a.retry_repetition_penalty)
+            meta2["first_attempt_error"] = meta.get("error")
+            meta = meta2
         meta.update(case_id=row.case_id, report_id=row.report_id, lang=a.lang,
                     n_findings=len(ext.findings) if ext else None)
         dst.write_text(json.dumps({"meta": meta, "extraction": ext.model_dump(mode="json") if ext else None}))

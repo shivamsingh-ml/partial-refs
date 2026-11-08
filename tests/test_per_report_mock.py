@@ -77,3 +77,31 @@ def test_parser_end_to_end(tmp_path, server):
     # scoring works on these outputs (self vs self -> F1 = 1)
     assert score_main(["--ours", str(out / "instances_en.parquet"), "--lumetti", str(out / "instances_en.parquet"),
                        "--results-dir", str(tmp_path / "res")]) == 0
+
+
+class LoopingVLLM(FakeVLLM):
+    """First attempt 'loops' (truncated JSON, finish_reason=length); retry with repetition_penalty works."""
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        FakeVLLM.seen.append(body)
+        if "repetition_penalty" in body:
+            content, reason = json.dumps(ANSWER), "stop"
+        else:
+            content, reason = '{"findings": [{"finding_type": "Caries", "tooth_ids": ["36"', "length"
+        data = json.dumps({"choices": [{"message": {"content": content}, "finish_reason": reason}],
+                           "usage": {"prompt_tokens": 10, "completion_tokens": 4096}}).encode()
+        self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+
+
+def test_retry_with_repetition_penalty(tmp_path):
+    srv = HTTPServer(("127.0.0.1", 0), LoopingVLLM)
+    t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
+    url = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        ext, meta = per_report.extract_one(url, "fake", "synthetic", "response_format")
+        assert ext is None and meta["finish_reason"] == "length"
+        ext2, meta2 = per_report.extract_one(url, "fake", "synthetic", "response_format", repetition_penalty=1.1)
+        assert ext2 is not None and meta2["repetition_penalty"] == 1.1
+    finally:
+        srv.shutdown()
