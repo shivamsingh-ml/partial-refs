@@ -77,13 +77,21 @@ def _flip(x: np.ndarray, fl=TF3_TO_TF4_FLIP) -> np.ndarray:
     return x
 
 
-def case_features(case_id: str, tf4_path: str, tf3_dir: str) -> tuple[dict, list[dict]]:
-    _, lab_p = tf3_paths(case_id, Path(tf3_dir))
+def case_features(case_id: str, tf4_path: str, tf3_dir: str,
+                  pred_dir: str | None = None) -> tuple[dict, list[dict]]:
+    """Hand-drawn TF3 labels (flipped onto the TF4 grid) or, with ``pred_dir``, predicted masks that
+    are already on the TF4 grid in TF3 label ids (centre A; merged pulp = 199, ignored here)."""
+    if pred_dir:
+        lab_p, source, flip = Path(pred_dir) / f"{case_id}.nii.gz", "umamba2_foldall_pred", None
+    else:
+        lab_p, source, flip = tf3_paths(case_id, Path(tf3_dir))[1], "tf3_manual", TF3_TO_TF4_FLIP
     img = nib.load(tf4_path)
-    row: dict = {"case_id": case_id, "label_source": "tf3_manual", "label_found": lab_p.is_file()}
+    row: dict = {"case_id": case_id, "label_source": source, "label_found": lab_p.is_file()}
     if not lab_p.is_file():
         return row, []
-    L = _flip(np.asarray(nib.load(str(lab_p)).dataobj).astype(np.int16))
+    L = np.asarray(nib.load(str(lab_p)).dataobj).astype(np.int16)
+    if flip:
+        L = _flip(L, flip)
     if L.shape != img.shape[:3]:
         row["shape_mismatch"] = True
         return row, []
@@ -145,7 +153,9 @@ def case_features(case_id: str, tf4_path: str, tf3_dir: str) -> tuple[dict, list
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--manifest", required=True, type=Path)
-    ap.add_argument("--tf3-dir", required=True, type=Path)
+    ap.add_argument("--tf3-dir", type=Path, default=Path("/msc/home/ssingh54/sae_tooth/data/raw/toothfairy3"))
+    ap.add_argument("--pred-mask-dir", type=Path, help="predicted masks on the TF4 grid (centre A)")
+    ap.add_argument("--centres", default="PFS")
     ap.add_argument("--results-dir", default=Path("results"), type=Path)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--limit", type=int)
@@ -153,12 +163,13 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     cases = pd.read_parquet(a.manifest / "cases.parquet")
-    cases = cases[cases["centre"].isin(list("PFS"))].sort_values("case_id")
+    cases = cases[cases["centre"].isin(list(a.centres))].sort_values("case_id")
     if a.limit:
         cases = cases.head(a.limit)
+    pred = str(a.pred_mask_dir) if a.pred_mask_dir else None
     with ProcessPoolExecutor(max_workers=a.workers) as ex:
         res = list(ex.map(case_features, cases["case_id"], cases["volume_path"],
-                          [str(a.tf3_dir)] * len(cases)))
+                          [str(a.tf3_dir)] * len(cases), [pred] * len(cases)))
     df = pd.DataFrame([r for r, _ in res]).merge(cases[["case_id", "centre"]], on="case_id")
     teeth = pd.DataFrame([t for _, ts in res for t in ts])
 
@@ -185,7 +196,8 @@ def main(argv: list[str] | None = None) -> int:
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2, default=str))
     write_provenance(out, extra={"run_id": run_id, "manifest_run": str(a.manifest), "tf3_dir": str(a.tf3_dir),
-                                 "label_flip_tf3_to_tf4": TF3_TO_TF4_FLIP})
+                                 "pred_mask_dir": pred, "centres": a.centres,
+                                 "label_flip_tf3_to_tf4": None if pred else TF3_TO_TF4_FLIP})
     print(json.dumps(summary, indent=2, default=str))
     return 0
 

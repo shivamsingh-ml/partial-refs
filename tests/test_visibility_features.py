@@ -45,3 +45,14 @@ def test_case_features_root_tip_and_condyle(tmp_path):
     assert row["mandible_right_touches_sup"] is True and row["mandible_left_touches_sup"] is False
     assert row["n_upper_teeth"] == 1 and row["n_lower_teeth"] == 1
     assert row["q1_n_teeth"] == 1 and row["q3_n_teeth"] == 1
+
+    # predicted-mask path (centre A): mask already on the TF4 grid, no flip, pulp 199 ignored
+    pred = tmp_path / "pred"
+    pred.mkdir()
+    Lp = L4.copy()
+    Lp[0, 0, 0] = 199
+    nib.save(nib.Nifti1Image(Lp, aff), str(pred / "A001.nii.gz"))
+    rowp, teethp = case_features("A001", str(tf4), str(tmp_path / "tf3"), pred_dir=str(pred))
+    assert rowp["label_source"] == "umamba2_foldall_pred"
+    assert {r["fdi"]: r for r in teethp}[16]["root_tip_cut"] is True
+    assert rowp["mandible_right_touches_sup"] is True
