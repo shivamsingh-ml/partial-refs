@@ -331,3 +331,23 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   checkout now `data/ttl_reports` only). Their labels: internal parser check only, never redistributed,
   only aggregate agreement reported. Conservative fallback if needed: manual 30-report parser check.
   Attribution added to `src/partialref/extract/fewshot.py`.
+- **Independent review of T2 code (subagent, code + synthetic data only, 2026-11-08) → fixes:**
+  (A1, severe) pandas 3 reads missing parquet strings as NaN, so `error is not None` marked every report
+  as failed when any report failed → T2 would silently use 0 cases; fixed with `notna()` + regression test.
+  (A2) non-identifiable π (no instance with n≥2, k≥1) still returned finite π / narrow CIs that could pass
+  GT flags → now NaN (also per bootstrap resample); GT flags require ≥10 two-reader "both" instances,
+  ≥30 double-read mentioned instances and ≥95 % identified resamples. (A3) condyle sides used world-x
+  halves while canal/sinus sides use TF3 label names (recorded as opposite) → one condyle value for both
+  sides until laterality is resolved. Also: default exclusions P116/P117/P260/P261 + S0015; headline fit on
+  double-read instances (all-cases fit = sensitivity row); per_report extractions table built from all
+  per-report files. Reviewer's synthetic end-to-end check re-run on fixed code: 1 failed report now drops
+  1 case (59/60 used). 70 tests pass.
+- **Provisional visibility rules for GT (recorded as HANDOFF §7 GT requires):** tooth present for Caries,
+  EndodonticTreatment, ConservativeRestoration, ToothDevelopmentPathology, PeriapicalLesion (+ root tip
+  not cut); missing-tooth rule (§2.6: between present teeth of the quadrant, or quadrant teeth not
+  touching a lateral/posterior face) for ToothAbsence, DentalImplant, ProstheticDevice,
+  PostExtractionSocket, RootResidue; canal/sinus: label present (deviation from §2.6: sinus %-of-complete
+  rule needs a reference volume, canal "not mostly cut" not yet quantified); condyles: both mandible halves
+  touch neither top nor posterior face; quadrant findings: jaw in the scan (label or teeth). Open risks
+  noted by the reviewer: tooth-level laterality of TF3 masks (test via `--mirror-teeth`, compare
+  mentions on invisible slots); pooling over slots/centres biases n=2 π upwards (conservative for T2).

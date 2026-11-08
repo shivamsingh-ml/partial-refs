@@ -5,12 +5,13 @@ import pandas as pd
 import pytest
 
 from partialref.propensity.agreement import (build_instances, candidate_slots, fit_type, is_visible,
-                                             load_visibility)
+                                             load_visibility, slot_assessable)
 from partialref.propensity.simulate import SimConfig, simulate
 
 
 def vis_case(**kw):
     v = {"upper": True, "lower": True, "teeth": {"16", "36", "46"}, "root_cut": {"16"},
+         "quadrant_edge": {"1": False, "2": False, "3": False, "4": False},
          "canal_Left": True, "canal_Right": False, "sinus_Left": False, "sinus_Right": True,
          "condyle_Left": False, "condyle_Right": True}
     v.update(kw)
@@ -63,7 +64,9 @@ def test_load_visibility(tmp_path):
     d.mkdir()
     pd.DataFrame([{"case_id": "P001", "label_found": True, "maxilla_vox": 0, "mandible_vox": 100,
                    "canal_left_vox": 5, "canal_right_vox": 0, "sinus_left_vox": 0, "sinus_right_vox": np.nan,
-                   "mandible_left_touches_sup": True, "mandible_right_touches_sup": False},
+                   "mandible_left_touches_sup": True, "mandible_right_touches_sup": False,
+                   "mandible_left_touches_post": False, "mandible_right_touches_post": False,
+                   "q1_teeth_touch_lateral_or_post": True, "q2_teeth_touch_lateral_or_post": False},
                   {"case_id": "P002", "label_found": False}]).to_parquet(d / "case_features.parquet")
     pd.DataFrame([{"case_id": "P001", "fdi": 16, "present": True, "root_tip_cut": True},
                   {"case_id": "P001", "fdi": 36, "present": True, "root_tip_cut": False},
@@ -74,7 +77,11 @@ def test_load_visibility(tmp_path):
     assert p["upper"] and p["lower"]                       # maxilla label absent but tooth 16 present
     assert p["teeth"] == {"16", "36"} and p["root_cut"] == {"16"}
     assert p["canal_Left"] and not p["canal_Right"] and not p["sinus_Right"]
-    assert p["condyle_Right"] and not p["condyle_Left"]
+    assert not p["condyle_Right"] and not p["condyle_Left"]     # one half cut at the top -> neither side
+    assert p["quadrant_edge"]["1"] and not p["quadrant_edge"]["2"]
+    assert p["quadrant_edge"]["3"]                              # missing flag -> treated as touching
+    m = load_visibility([d], mirror_teeth=True)["P001"]
+    assert m["teeth"] == {"26", "46"} and m["root_cut"] == {"26"} and not m["quadrant_edge"]["1"]
 
 
 @pytest.mark.parametrize("pi_true", [0.6, 0.85])
@@ -88,3 +95,57 @@ def test_fit_type_recovers_pi(pi_true):
     assert r["pi_lo"] <= pi_true <= r["pi_hi"]
     assert abs(r["pi_mle"] - pi_true) < 0.05 and abs(r["pi_closed_form_n2"] - pi_true) < 0.06
     assert r["boot_ok"] == 200 and r["pi_ci_width"] < 0.2
+
+
+def test_slot_assessable_missing_tooth_rule():
+    v = vis_case(teeth={"31", "34", "36"}, quadrant_edge={"1": True, "2": False, "3": True, "4": True})
+    assert slot_assessable(v, "33")            # between present 31 and 36
+    assert not slot_assessable(v, "38")        # beyond last present tooth, quadrant touches the edge
+    assert slot_assessable(v, "28")            # quadrant 2 does not touch the edge
+    assert not slot_assessable(v, "17")        # no present teeth in q1 and q1 touches the edge
+    assert not is_visible(v, "ToothAbsence", "38") and is_visible(v, "ToothAbsence", "33")
+
+
+def test_condyle_needs_both_halves_inside(tmp_path):
+    d = tmp_path / "v"
+    d.mkdir()
+    base = {"label_found": True, "mandible_vox": 10, "mandible_left_touches_sup": False,
+            "mandible_right_touches_sup": False}
+    pd.DataFrame([{**base, "case_id": "A1", "mandible_left_touches_post": False, "mandible_right_touches_post": False},
+                  {**base, "case_id": "A2", "mandible_left_touches_post": True, "mandible_right_touches_post": False}]
+                 ).to_parquet(d / "case_features.parquet")
+    pd.DataFrame(columns=["case_id", "fdi", "present", "root_tip_cut"]).to_parquet(d / "tooth_features.parquet")
+    v = load_visibility([d])
+    assert v["A1"]["condyle_Left"] and v["A1"]["condyle_Right"]
+    assert not v["A2"]["condyle_Left"] and not v["A2"]["condyle_Right"]
+
+
+def test_failed_reports_detected_after_parquet_roundtrip(tmp_path):
+    """Regression (review A1): pandas >= 3 reads missing strings back as NaN, not None."""
+    meta = pd.DataFrame({"case_id": ["P001", "P002", "P003"], "report_id": ["a", "b", "c"],
+                         "error": [None, None, "validation: 3 errors"]})
+    meta.to_parquet(tmp_path / "m.parquet")
+    back = pd.read_parquet(tmp_path / "m.parquet")
+    failed = set(map(tuple, back.loc[back["error"].notna(), ["case_id", "report_id"]].to_numpy()))
+    assert failed == {("P003", "c")}
+
+
+def test_single_report_only_is_not_estimable():
+    """Regression (review A2): no instance with n >= 2 and k >= 1 -> pi NaN, never a passing GT flag."""
+    cfg = SimConfig(n_findings=1, n_centres=1, centre_logit_sd=0.0, n_cases=2000, report_count_probs=(1.0,),
+                    prevalence_range=(0.3, 0.3), propensity_range=(0.8, 0.8), seed=3)
+    s = simulate(cfg).instances
+    inst = pd.DataFrame({"case_id": s.case_id, "centre": "F", "finding_type": "Caries", "slot": "36",
+                         "n": s.n_reports, "k": s.k})
+    r = fit_type(inst, n_boot=50, seed=0)
+    assert np.isnan(r["pi_mle"]) and not r["supported"] and r["boot_non_identified_share"] == 1.0
+
+
+def test_low_double_read_support_not_supported():
+    cfg = SimConfig(n_findings=1, n_centres=1, centre_logit_sd=0.0, n_cases=60, report_count_probs=(0.0, 1.0),
+                    prevalence_range=(0.1, 0.1), propensity_range=(0.8, 0.8), seed=4)
+    s = simulate(cfg).instances
+    inst = pd.DataFrame({"case_id": s.case_id, "centre": "P", "finding_type": "Caries", "slot": "36",
+                         "n": s.n_reports, "k": s.k})
+    r = fit_type(inst, n_boot=50, seed=0)
+    assert not r["supported"]                   # far fewer than 30 double-read mentions

@@ -133,9 +133,10 @@ def main(argv: list[str] | None = None) -> int:
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
         metas = list(ex.map(work, reps.itertuples()))
 
-    rows_inst, rows_na = [], []
+    rows_inst, rows_na, all_meta = [], [], []
     for f in sorted((out / "per_report").glob(f"*__{a.lang}.json")):
         d = json.loads(f.read_text())
+        all_meta.append(d["meta"])          # coverage = every per-report file in the run, not this call only
         if not d["extraction"]:
             continue
         ext = ReportExtraction.model_validate(d["extraction"])
@@ -144,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
                       for c, t, s in instances(m["case_id"], ext.findings)]
         rows_na += [{"case_id": m["case_id"], "report_id": m["report_id"], "structure": s}
                     for s in ext.not_assessable]
-    meta_df = pd.DataFrame(metas)
+    meta_df = pd.DataFrame(all_meta) if all_meta else pd.DataFrame(metas)
     meta_df.to_parquet(out / f"extractions_{a.lang}.parquet", index=False)
     pd.DataFrame(rows_inst, columns=["case_id", "report_id", "lang", "finding_type", "slot"]).to_parquet(
         out / f"instances_{a.lang}.parquet", index=False)
