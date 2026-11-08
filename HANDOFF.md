@@ -426,12 +426,16 @@ Order (revised 2026-11-08): M0 → **GT (go/no-go test)** → M0.5 → M1 → G1
 Purpose: answer cheaply whether (i) reader disagreement is mostly *omission* and (ii) the effect is
 large enough to change conclusions. Budget: ≤ 3 GPU-hours (parser) + CPU. Uses provisional
 visibility (tier 1–2 rules of §2.6 with simple thresholds, recorded in DECISIONS.md); the final
-thresholds are frozen later in M1. Thresholds below are **proposals until Shivam (and supervisor)
-confirm them**.
+thresholds are frozen later in M1. Thresholds below are **guidance values**: Shivam takes the
+go/no-go decision after seeing the T1–T4 numbers, and the reasoning is written to DECISIONS.md either
+way (internal decision; the paper's analyses stay pre-specified). Parser input: **English reports**
+(team cannot read Italian; manual checks must be possible); translation noise is measured
+automatically by also parsing the Italian originals and comparing extracted findings per report.
+Few-shot examples for the parser are synthetic (written by Claude, no real report text).
 
 | Test | What | Pass if |
 | --- | --- | --- |
-| T1 Parser | Local LLM parses all 1000 reports (Lumetti ontology); union per case vs Lumetti's released per-patient labels (P/F/S); manual check of 10 reports by Shivam | finding-type+slot F1 ≥ 0.90 for ≥ 6 common finding types (≥ 100 instances); no systematic error in the manual check |
+| T1 Parser | Local LLM parses all 1000 EN reports (Lumetti ontology; IT also parsed for a translation check); union per case vs Lumetti's released per-patient labels (P/F/S); manual check of 10 reports by Shivam | finding-type+slot F1 ≥ 0.90 for ≥ 6 common finding types (≥ 100 instances); no systematic error in the manual check |
 | T2 Propensity | π per common finding type, pooled over centres, visible instances, double-read cases (excl. P116/P117/P260/P261), bootstrap CIs | ≥ 3 finding types with upper 95 % CI of π < 0.90 and CI width ≤ 0.30 |
 | T3 Mask agreement | Tier-1 findings (missing teeth, implants, crowns/bridges): π from two readers vs π measured against TF3 masks; false-mention rate φ vs masks | CIs overlap for ≥ 2 of 3 types and φ ≤ 0.05 |
 | T4 Effect size | Plug estimated (p, π) into a simulated scoring of realistic systems (a conservative and a complete one) | corrected − raw precision ≥ 5 points for common types, and/or the ranking of the two systems flips |

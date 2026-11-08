@@ -300,3 +300,7 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   no conclusion changes. GT = parser check (T1), π estimates (T2), mask agreement (T3), effect size
   (T4), with proposed pass/fail thresholds and decision rules in HANDOFF §7 (GT). No V2V2R/segmentation
   retraining or decoder work until the GT decision. Thresholds are proposals until confirmed.
+- **GT adjustments (Shivam, 2026-11-08):** parser input = **English** reports (no one in the team reads
+  Italian, so manual checks must be in English); translation noise measured automatically by parsing
+  the Italian originals too and comparing per-report findings. Few-shot examples synthetic (written by
+  Claude). GT thresholds are guidance; decision after seeing the numbers, reasoning recorded.
