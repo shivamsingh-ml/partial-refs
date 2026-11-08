@@ -1,4 +1,21 @@
-# STATUS — where we stopped (end of session, Sat 7 Nov 2026)
+# STATUS — where we stopped
+
+## Update Sun 8 Nov 2026 (latest — read this first)
+- Plan changed: **go/no-go test GT first** (HANDOFF §7 GT, thresholds = guidance). No V2V2R/segmentation
+  retraining or decoder work before the GT decision.
+- Built: finding ontology (after Lumetti et al., re-implemented), synthetic few-shot prompt, local-LLM
+  per-report parser (`partialref.extract.per_report`), Lumetti label reader (529 cases, run
+  `20261108-2017-e80c4fe-lumetti-labels`), parser scoring, mock-server end-to-end test (59 tests pass).
+  vLLM 0.19 request format, flags and JSON grammar verified on CPU. Qwen3-14B downloaded (`models/Qwen3-14B`).
+- Centre A segmentation done (95/95, job 614610); centre A visibility features done (job 614955; run is
+  marked dirty → rerun cleanly before freezing thresholds).
+- **Queued:** job 614957 = parser 5-case check (EN; first 5 IDs are A cases → pipeline test only, no
+  accuracy score); job 614962 = full parse of all reports EN + IT + EN repeat, chained `afterok`, each
+  scored against Lumetti labels. Estimated start Mon ~08:20 (A100 40GB queue).
+- **Monday:** (1) check 614957/614962 logs (only grep the vLLM server log for errors; never read report
+  text); (2) T1 numbers: parser vs Lumetti per finding type, EN-vs-IT, run-to-run; (3) agree provisional
+  visibility rules with Shivam; (4) build T2 (π estimates), T3 (mask comparison), T4 (effect-size
+  simulation) → `reports/REPORT_GT.md`. If 614957 failed, fix and resubmit both (614962 never starts).
 
 Read HANDOFF.md (rules, plan) and DECISIONS.md (evidence) first. This file is only the bookmark.
 
