@@ -25,7 +25,7 @@ import pandas as pd
 from pydantic import ValidationError
 
 from partialref.extract.fewshot import messages
-from partialref.extract.ontology import ReportExtraction, instances, json_schema
+from partialref.extract.ontology import FindingType, Finding, ReportExtraction, instances, json_schema, slot_kind
 from partialref.provenance import make_run_id, write_provenance
 
 
@@ -50,6 +50,62 @@ def request_body(model: str, report_text: str, mode: str, repetition_penalty: fl
     return body
 
 
+LEFT_QUADRANT_DIGITS = set("2367")          # FDI: 2 upper left, 3 lower left (+ primary 6, 7)
+QUADRANT_OF_DIGIT = {"1": "QuadrantI", "2": "QuadrantII", "3": "QuadrantIII", "4": "QuadrantIV",
+                     "5": "QuadrantI", "6": "QuadrantII", "7": "QuadrantIII", "8": "QuadrantIV"}
+
+
+def _repair_anchor(f: dict) -> list[dict]:
+    """A side/quadrant finding without its side/quadrant but with tooth ids: derive the anchor from the
+    FDI digits (the prompt's own convention), one finding per distinct side/quadrant. Else unchanged."""
+    try:
+        kind = slot_kind(FindingType(f.get("finding_type")))
+    except ValueError:
+        return [f]
+    teeth = [str(t) for t in (f.get("tooth_ids") or []) if str(t)[:1].isdigit()]
+    if kind == "side" and not f.get("side") and teeth:
+        side_of = {t: "Left" if t[0] in LEFT_QUADRANT_DIGITS else "Right" for t in teeth}
+        return [{**f, "side": v, "tooth_ids": sorted(t for t in teeth if side_of[t] == v)}
+                for v in sorted(set(side_of.values()))]
+    if kind == "quadrant" and not f.get("quadrant") and teeth:
+        q_of = {t: QUADRANT_OF_DIGIT[t[0]] for t in teeth if t[0] in QUADRANT_OF_DIGIT}
+        return [{**f, "quadrant": v, "tooth_ids": sorted(t for t in q_of if q_of[t] == v)}
+                for v in sorted(set(q_of.values()))] or [f]
+    return [f]
+
+
+def report_ok(meta: pd.DataFrame) -> pd.Series:
+    """Report usable for counting readers: parsed without error AND no finding dropped during salvage
+    (a dropped real finding would look like a reader omission; review 2026-11-09 #14)."""
+    dropped = pd.to_numeric(meta["dropped_findings"], errors="coerce").fillna(0) if "dropped_findings" in meta \
+        else pd.Series(0, index=meta.index)
+    return meta["error"].isna() & (dropped == 0)
+
+
+def parse_extraction(content: str) -> tuple[ReportExtraction, dict]:
+    """Validate the model output. If the report as a whole fails validation (schema-valid output can still
+    violate the per-type anchor rule, review 2026-11-09 #1), salvage it finding by finding: repair missing
+    side/quadrant from tooth ids, drop findings that stay invalid, and count both. Truncated / non-JSON
+    output still raises (whole report failed)."""
+    try:
+        return ReportExtraction.model_validate_json(content), {"salvaged": False}
+    except ValidationError:
+        data = json.loads(content)                       # JSONDecodeError -> report failed
+        if not isinstance(data, dict):
+            raise
+        good, repaired, dropped = [], 0, 0
+        for f in data.get("findings") or []:
+            fixed = _repair_anchor(f) if isinstance(f, dict) else [f]
+            repaired += fixed != [f]
+            for g in fixed:
+                try:
+                    good.append(Finding.model_validate(g))
+                except ValidationError:
+                    dropped += 1
+        ext = ReportExtraction(findings=good, not_assessable=data.get("not_assessable") or [])
+        return ext, {"salvaged": True, "repaired_findings": repaired, "dropped_findings": dropped}
+
+
 def extract_one(server: str, model: str, text: str, mode: str,
                 repetition_penalty: float | None = None) -> tuple[ReportExtraction | None, dict]:
     t0 = time.time()
@@ -60,10 +116,13 @@ def extract_one(server: str, model: str, text: str, mode: str,
         meta.update(prompt_tokens=resp.get("usage", {}).get("prompt_tokens"),
                     completion_tokens=resp.get("usage", {}).get("completion_tokens"),
                     finish_reason=resp["choices"][0].get("finish_reason"))
-        ext = ReportExtraction.model_validate_json(content)
+        ext, info = parse_extraction(content)
+        meta.update(info)
         meta["error"] = None
     except ValidationError as e:
         ext, meta["error"] = None, f"validation: {e.error_count()} errors"
+    except json.JSONDecodeError:
+        ext, meta["error"] = None, "invalid_json"
     except urllib.error.HTTPError as e:
         ext, meta["error"] = None, f"http {e.code}"
     except Exception as e:  # noqa: BLE001  (record and continue)
@@ -125,8 +184,11 @@ def main(argv: list[str] | None = None) -> int:
     def work(row) -> dict:
         dst = out / "per_report" / f"{row.case_id}__{row.report_id}__{a.lang}.json"
         if dst.exists():
-            prev = json.loads(dst.read_text())
-            if prev["extraction"] is not None or not a.retry_errors:
+            try:
+                prev = json.loads(dst.read_text())
+            except json.JSONDecodeError:          # partial file from a killed job -> parse again
+                prev = None
+            if prev is not None and (prev["extraction"] is not None or not a.retry_errors):
                 return prev["meta"]
         text = Path(row.path).read_text(encoding="utf-8", errors="replace")
         ext, meta = extract_one(a.server, a.model, text, mode)
@@ -137,7 +199,9 @@ def main(argv: list[str] | None = None) -> int:
             meta = meta2
         meta.update(case_id=row.case_id, report_id=row.report_id, lang=a.lang,
                     n_findings=len(ext.findings) if ext else None)
-        dst.write_text(json.dumps({"meta": meta, "extraction": ext.model_dump(mode="json") if ext else None}))
+        tmp = dst.with_suffix(".json.tmp")           # atomic: a killed job never leaves a partial file
+        tmp.write_text(json.dumps({"meta": meta, "extraction": ext.model_dump(mode="json") if ext else None}))
+        tmp.replace(dst)
         return meta
 
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
@@ -163,6 +227,9 @@ def main(argv: list[str] | None = None) -> int:
         out / f"not_assessable_{a.lang}.parquet", index=False)
     summary = {"out": str(out), "lang": a.lang, "mode": mode, "n_reports": int(len(meta_df)),
                "n_errors": int(meta_df["error"].notna().sum()),
+               "n_salvaged": int(meta_df.get("salvaged", pd.Series(dtype=object)).fillna(False).astype(bool).sum()),
+               "n_dropped_findings": int(pd.to_numeric(meta_df.get("dropped_findings", pd.Series(dtype=float)),
+                                                       errors="coerce").fillna(0).sum()),
                "errors": meta_df["error"].value_counts().to_dict(),
                "n_instances": len(rows_inst), "median_seconds": float(meta_df["seconds"].median()),
                "finish_reasons": meta_df.get("finish_reason", pd.Series(dtype=str)).value_counts().to_dict()}

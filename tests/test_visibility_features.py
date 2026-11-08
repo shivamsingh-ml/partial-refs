@@ -42,6 +42,8 @@ def test_case_features_root_tip_and_condyle(tmp_path):
     assert t[16]["present"] and t[16]["root_tip_cut"] is True
     assert t[36]["present"] and t[36]["root_tip_cut"] is False
     assert not t[11]["present"]
+    assert t[36]["cx"] == 0.45 and t[16]["cx"] == 2.25          # world x of the centroid, mm
+    assert "cx" not in t[11] and row["mandible_cx"] < t[16]["cx"]
     assert row["mandible_right_touches_sup"] is True and row["mandible_left_touches_sup"] is False
     assert row["n_upper_teeth"] == 1 and row["n_lower_teeth"] == 1
     assert row["q1_n_teeth"] == 1 and row["q3_n_teeth"] == 1

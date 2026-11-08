@@ -1,6 +1,25 @@
 # STATUS — where we stopped
 
-## Update Sun 8 Nov 2026 (latest — read this first)
+## Update Mon 9 Nov 2026, early morning (latest — read this first)
+- T2 done on the 14B parse (provisional): π canal 0.88, endo 0.83, implant 0.68, restoration 0.51, caries 0.26
+  (double-read, mirrored masks). **TF3 tooth masks are L/R mirrored vs report FDI numbers** (214 vs 13 cases);
+  clinician side swaps are at chance level. V2V2R's own segmentation already corrects L/R (segmentation.py).
+- **Bug (ours): centre A v1 masks double-mapped labels** → tooth-level A features invalid; fixed in
+  `jobs/seg_centreA.sbatch` (new dir `_v2`); needs the GPU re-run (3-case check first, then 95).
+- Independent review of all code incl. parser: 15 issues, all fixed + verified (DECISIONS 2026-11-09).
+  All T1 numbers so far used the old scorer → re-score.
+- Qwen3-32B (full bf16, A100 80GB) parse job 615019: EN done (3 failed reports vs 17 for 14B), IT/repeat
+  running. Old-scorer held-out slot F1 0.847 (14B 0.833) — not final.
+- Queued overnight (see DECISIONS / logs): Lumetti reader re-run (cases.parquet) → re-score 14B + 32B;
+  P/F/S visibility features v2 + side geometry + report-scan fingerprint + laterality on the 32B parse;
+  centre A segmentation 3-case diagnostic.
+- **Next:** (1) check those logs; (2) if the 3-case A masks contain all 4 quadrants' FDI IDs, run all 95, then
+  A visibility + laterality on A; (3) decide canal/sinus side swap from side geometry; (4) parser freeze
+  (choose on tune, report held-out) + audit sheet for Shivam (open question: add "Lumetti-only" and
+  "both agree" samples); (5) T3, T4, REPORT_GT.md. Waiting on Shivam: visual check of S0015, F028, F055,
+  P230, S0019; V2V2R facts.py comment (were VLM training facts sequential-label?).
+
+## Update Sun 8 Nov 2026
 - Plan changed: **go/no-go test GT first** (HANDOFF §7 GT, thresholds = guidance). No V2V2R/segmentation
   retraining or decoder work before the GT decision.
 - Built: finding ontology (after Lumetti et al., re-implemented), synthetic few-shot prompt, local-LLM

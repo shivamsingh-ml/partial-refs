@@ -56,8 +56,13 @@ def parse_file(path: Path) -> list[dict]:
             if vals:
                 quals[ours] = vals
         kind = slot_kind(FindingType(ftype))
-        slots = teeth if kind == "tooth" else ([_local(side)] if side is not None and kind == "side"
-                                               else [_local(quad)] if quad is not None else [])
+        if kind == "tooth":
+            slots = teeth
+        elif kind == "side":
+            slots = [_local(side)] if side is not None else []
+        else:
+            slots = [_local(quad)] if quad is not None else []
+        # anchors: findings without one keep type level (findings.parquet) but get no slot (review #9)
         rows.append({"case_id": cid, "finding_id": _local(subj), "finding_type": ftype,
                      "slot_kind": kind, "slots": slots, "tooth_ids": teeth,
                      "side": _local(side) if side is not None else None,
@@ -91,13 +96,19 @@ def main(argv: list[str] | None = None) -> int:
     out = a.results_dir / "lumetti" / run_id
     out.mkdir(parents=True, exist_ok=False)
     findings.to_parquet(out / "findings.parquet", index=False)
+    # every parsed TTL file = scored Lumetti case, also files without findings (score_parser universe)
+    pd.DataFrame({"case_id": sorted({case_id_from_file(p.name) for p in a.ttl_dir.glob("*.ttl")} - {None})}) \
+        .to_parquet(out / "cases.parquet", index=False)
     inst.to_parquet(out / "instances.parquet", index=False)
     try:
         src = subprocess.run(["git", "-C", str(a.ttl_dir), "rev-parse", "HEAD"], capture_output=True,
                              text=True, check=True).stdout.strip()
     except Exception:
         src = None
-    summary = {"run_id": run_id, "n_files": int(findings["case_id"].nunique()),
+    summary = {"run_id": run_id, "n_files": len(list(a.ttl_dir.glob("*.ttl"))),
+               "n_files_with_findings": int(findings["case_id"].nunique()),
+               "findings_without_anchor": int((findings.loc[~findings["unknown_type"].astype(bool), "slots"]
+                                               .map(lambda x: len(x) if isinstance(x, list) else 0) == 0).sum()),
                "n_findings": int(len(findings)), "n_instances": int(len(inst)),
                "unknown_types": int(findings["unknown_type"].sum()),
                "parse_errors": errors,

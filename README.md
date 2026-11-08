@@ -26,7 +26,7 @@ Code is backed up by `git push`. Small derived results are pulled **from the lab
 ```bash
 MSC=ssingh54@<msc-login-host>:/msc/home/ssingh54/partial-refs
 DEST=~/partial-refs-backup
-rsync -av --prune-empty-dirs \
+rsync -av --prune-empty-dirs --exclude='*parser-audit-sheet*/' \
   --include='*/' --include='metrics.json' --include='provenance.json' --include='config.yaml' \
   --include='*.csv' --exclude='*' "$MSC/results/" "$DEST/results/"
 rsync -av "$MSC/reports/" "$DEST/reports/"

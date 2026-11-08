@@ -30,7 +30,7 @@ n = 2 closed form as a check, and case-level bootstrap CIs computed from per-cas
 Usage:
     python -m partialref.propensity.agreement --parse-run results/extract/<run> --lang en \
         --manifest results/manifest/<run> --vis results/audit/<run P/F/S> [--vis results/audit/<run A>] \
-        [--centres PFS] [--exclude P116,P117,P260,P261] [--n-boot 1000] [--by-centre]
+        [--centres PFS] [--exclude P116,P117,P260,P261] [--n-boot 1000] [--by-centre] [--mirror-centres PFS]
 """
 
 from __future__ import annotations
@@ -45,6 +45,7 @@ import numpy as np
 import pandas as pd
 
 from partialref.extract.ontology import FindingType, slot_kind
+from partialref.extract.per_report import report_ok
 from partialref.propensity.closed_form import closed_form_n2
 from partialref.propensity.mle import fit_mle
 from partialref.provenance import make_run_id, write_provenance
@@ -65,9 +66,12 @@ def _mirror_tooth(t: str) -> str:
     return MIRROR_Q[t[0]] + t[1]
 
 
-def load_visibility(vis_dirs: list[Path], mirror_teeth: bool = False) -> dict[str, dict]:
+def load_visibility(vis_dirs: list[Path], mirror_centres: str = "", swap_side_centres: str = "") -> dict[str, dict]:
     """Per case: arches in the scan, teeth present, teeth with cut root tip, quadrant edge contact,
-    side structures. ``mirror_teeth`` swaps left/right FDI quadrants of the mask teeth (laterality test)."""
+    side structures. Cases of ``mirror_centres`` get left/right FDI quadrants of the mask teeth swapped
+    (1<->2, 3<->4): TF3 tooth labels are mirrored relative to the reports (DECISIONS 2026-11-08/09).
+    Cases of ``swap_side_centres`` get canal/sinus Left<->Right swapped (set from partialref.audit.side_geometry;
+    default none until that check has run). Condyles use one value for both sides, so no swap is needed."""
     out: dict[str, dict] = {}
     for d in vis_dirs:
         cf = pd.read_parquet(d / "case_features.parquet")
@@ -75,8 +79,8 @@ def load_visibility(vis_dirs: list[Path], mirror_teeth: bool = False) -> dict[st
         if tf.empty or "present" not in tf:
             tf = pd.DataFrame(columns=["case_id", "fdi", "present", "root_tip_cut"])
         teeth = tf[tf["present"] == True].assign(fdi=lambda x: x["fdi"].astype(int).astype(str))  # noqa: E712
-        if mirror_teeth:
-            teeth = teeth.assign(fdi=teeth["fdi"].map(_mirror_tooth))
+        flip = teeth["case_id"].str[0].isin(list(mirror_centres))
+        teeth.loc[flip, "fdi"] = teeth.loc[flip, "fdi"].map(_mirror_tooth)
         present = teeth.groupby("case_id")["fdi"].agg(set).to_dict()
         cut = teeth[teeth["root_tip_cut"] == True].groupby("case_id")["fdi"].agg(set).to_dict()  # noqa: E712
         for r in cf.to_dict("records"):
@@ -92,8 +96,16 @@ def load_visibility(vis_dirs: list[Path], mirror_teeth: bool = False) -> dict[st
             def false_(key: str) -> bool:      # True only if the flag exists and is False
                 return r.get(key) is False
 
-            edge = {q: not false_(f"q{q}_teeth_touch_lateral_or_post") for q in "1234"}
-            if mirror_teeth:
+            def jaw_inside(jaw: str) -> bool:   # both halves clear of lateral and posterior faces
+                return vox(jaw) > 0 and all(false_(f"{jaw}_{h}_touches_{f}") for h in ("left", "right")
+                                            for f in ("lateral", "post"))
+
+            # quadrant with mask teeth: do its teeth touch a lateral/posterior face? Quadrant WITHOUT mask
+            # teeth (review 2026-11-09 #4): only assessable if the whole jaw stays clear of those faces
+            # (side-independent, so unaffected by the L/R conventions); missing flags -> not assessable.
+            edge = {q: (not false_(f"q{q}_teeth_touch_lateral_or_post")) if (r.get(f"q{q}_n_teeth") or 0) > 0
+                    else not jaw_inside("maxilla" if q in "12" else "mandible") for q in "1234"}
+            if c[0] in mirror_centres:
                 edge = {q: edge[MIRROR_Q[q]] for q in "1234"}
             condyles = (vox("mandible") > 0 and all(false_(f"mandible_{h}_touches_sup") and
                                                      false_(f"mandible_{h}_touches_post") for h in ("left", "right")))
@@ -105,6 +117,9 @@ def load_visibility(vis_dirs: list[Path], mirror_teeth: bool = False) -> dict[st
                 "sinus_Left": vox("sinus_left") > 0, "sinus_Right": vox("sinus_right") > 0,
                 "condyle_Left": condyles, "condyle_Right": condyles,
             }
+            if c[0] in swap_side_centres:
+                for s in ("canal", "sinus"):
+                    out[c][f"{s}_Left"], out[c][f"{s}_Right"] = out[c][f"{s}_Right"], out[c][f"{s}_Left"]
     return out
 
 
@@ -175,6 +190,21 @@ def build_instances(reports: pd.DataFrame, mentions: pd.DataFrame, vis: dict[str
     return inst, info
 
 
+def select_reports(manifest: Path, parse_run: Path, lang: str, centres: str,
+                   exclude: list[str]) -> tuple[pd.DataFrame, set[tuple[str, str]]]:
+    """Reports of the selected centres (minus exclusions) and the (case, report) pairs whose parse failed
+    or is missing. Callers drop every case with such a report (reader unknown)."""
+    reps = pd.read_parquet(manifest / "reports.parquet")
+    reps = reps[(reps["lang"] == lang) & reps["case_id"].str[0].isin(list(centres))
+                & ~reps["case_id"].isin(exclude)]
+    meta = pd.read_parquet(parse_run / f"extractions_{lang}.parquet")
+    # failed = parse error or a finding dropped during salvage (report_ok; NaN-safe for pandas >= 3)
+    failed = set(map(tuple, meta.loc[~report_ok(meta), ["case_id", "report_id"]].to_numpy()))
+    parsed = set(map(tuple, meta[["case_id", "report_id"]].to_numpy()))
+    missing = {(c, r) for c, r in reps[["case_id", "report_id"]].itertuples(index=False)} - parsed
+    return reps, failed | missing
+
+
 # ---------------------------------------------------------------- fitting
 def _case_tables(inst: pd.DataFrame, n_max: int) -> tuple[list[str], np.ndarray]:
     """Per case a (n_max+1) x (n_max+1) table of instance counts by (n, k)."""
@@ -240,7 +270,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--exclude", type=lambda s: [x for x in s.split(",") if x],
                     default=["P116", "P117", "P260", "P261", "S0015"],
                     help="default: 4 cases with likely misfiled reports + S0015 (possibly upside down)")
-    ap.add_argument("--mirror-teeth", action="store_true", help="laterality test: mirror mask teeth L/R")
+    ap.add_argument("--mirror-centres", default="PFS",
+                    help="centres whose mask tooth IDs are mirrored L/R (TF3 convention, DECISIONS); '' = none")
+    ap.add_argument("--swap-side-centres", default="",
+                    help="centres whose canal/sinus Left/Right labels are swapped (from audit.side_geometry)")
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--by-centre", action="store_true")
@@ -249,18 +282,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tag", default="propensity-gt")
     a = ap.parse_args(argv)
 
-    reps = pd.read_parquet(a.manifest / "reports.parquet")
-    reps = reps[(reps["lang"] == a.lang) & reps["case_id"].str[0].isin(list(a.centres))
-                & ~reps["case_id"].isin(a.exclude)][["case_id", "report_id"]]
-    meta = pd.read_parquet(a.parse_run / f"extractions_{a.lang}.parquet")
-    # pandas >= 3 reads missing strings back as NaN, not None -> use notna()
-    failed = set(map(tuple, meta.loc[meta["error"].notna(), ["case_id", "report_id"]].to_numpy()))
-    parsed = set(map(tuple, meta[["case_id", "report_id"]].to_numpy()))
-    missing = {(c, r) for c, r in reps.itertuples(index=False)} - parsed   # never parsed = unknown reader
+    reps, bad_reports = select_reports(a.manifest, a.parse_run, a.lang, a.centres, a.exclude)
+    reps = reps[["case_id", "report_id"]]
     mentions = pd.read_parquet(a.parse_run / f"instances_{a.lang}.parquet")
-    vis = load_visibility(a.vis, mirror_teeth=a.mirror_teeth)
+    vis = load_visibility(a.vis, mirror_centres=a.mirror_centres, swap_side_centres=a.swap_side_centres)
     types = [t.value for t in FindingType]
-    inst, info = build_instances(reps, mentions, vis, failed | missing, types)
+    inst, info = build_instances(reps, mentions, vis, bad_reports, types)
 
     rows = []
     multi = inst[inst["n"] >= 2]
@@ -286,14 +313,15 @@ def main(argv: list[str] | None = None) -> int:
     res.to_csv(out / "propensity_by_type.csv", index=False)
     inst.to_parquet(out / "instances_nk.parquet", index=False)
     pooled = res[res["group"] == "pooled_double_read"].dropna(subset=["pi_mle"]) if "pi_mle" in res else res.iloc[0:0]
-    summary = {"run_id": run_id, "centres": a.centres, "excluded": a.exclude, "mirror_teeth": a.mirror_teeth, **info,
-               "n_failed_or_missing_reports": len(failed | missing),
+    summary = {"run_id": run_id, "centres": a.centres, "excluded": a.exclude, "mirror_centres": a.mirror_centres,
+               "swap_side_centres": a.swap_side_centres, **info,
+               "n_failed_or_missing_reports": len(bad_reports),
                "types_passing_both_guidance_checks": pooled[pooled.gt_upper_ci_below_0_90 & pooled.gt_ci_width_le_0_30]
                ["finding_type"].tolist() if len(pooled) else []}
     (out / "summary.json").write_text(json.dumps(summary, indent=2, default=str))
     write_provenance(out, extra={"run_id": run_id, "parse_run": str(a.parse_run), "manifest": str(a.manifest),
                                  "vis": [str(v) for v in a.vis], "n_boot": a.n_boot, "seed": a.seed,
-                                 "mirror_teeth": a.mirror_teeth, "excluded": a.exclude})
+                                 "mirror_centres": a.mirror_centres, "excluded": a.exclude})
     cols = ["group", "finding_type", "n_cases", "n_multi_read_mentioned", "two_reader_both", "two_reader_one",
             "pi_mle", "pi_lo", "pi_hi", "pi_closed_form_n2", "p_mle", "supported"]
     print(res[[c for c in cols if c in res]].round(3).to_string(index=False))

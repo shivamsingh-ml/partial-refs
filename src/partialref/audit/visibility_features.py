@@ -8,11 +8,14 @@ Per case (one row):
 - scan geometry; for each structure group: voxel count, volume (mm^3), number of connected components,
   and which scan faces it touches. Faces are named in world terms (sup/inf, left/right, ant/post)
   using the TF4 affine (RAS+ world), so "touches_sup" means "cut by the top of the scan".
-- mandible split at its own centroid into left/right halves: does each half touch the top face
-  (condyle cut) or a lateral / posterior face?
+- mandible and maxilla each split at their own centroid into left/right halves: does each half touch
+  the top face (condyle cut) or a lateral / posterior face?
 - per quadrant (1-4): jaw-label or tooth extent touching a lateral or posterior face.
 Per tooth (long table): present, volume, root-direction face touched (upper teeth: sup, lower: inf)
 -> root tip cut by the scan boundary.
+World-x centroid (mm, TF4 affine) of every structure (`<name>_cx`) and tooth (`cx`): used only to
+check that left/right structure labels sit on the same side as the teeth of the matching quadrants
+(partialref.audit.side_geometry); the TF4 affine's own left/right is not trusted on its own.
 
 Usage:
     python -m partialref.audit.visibility_features --manifest results/manifest/<run_id> --tf3-dir DIR [--limit N] [--workers 8]
@@ -70,6 +73,12 @@ def touches(mask: np.ndarray, faces: dict[str, tuple[int, int]]) -> dict[str, bo
     return res
 
 
+def centroid_x(mask: np.ndarray, affine: np.ndarray) -> float:
+    """World x (mm) of the voxel centroid (the affine is linear, so the mean index maps exactly)."""
+    c = np.argwhere(mask).mean(axis=0)
+    return round(float(affine[0, :3] @ c + affine[0, 3]), 2)
+
+
 def _flip(x: np.ndarray, fl=TF3_TO_TF4_FLIP) -> np.ndarray:
     for ax, f in enumerate(fl):
         if f:
@@ -107,23 +116,26 @@ def case_features(case_id: str, tf4_path: str, tf3_dir: str,
         row[f"{name}_mm3"] = round(n * vox_mm3, 1)
         if n:
             row[f"{name}_ncomp"] = int(ndimage.label(m)[1])
+            row[f"{name}_cx"] = centroid_x(m, aff)
             for k, v in touches(m, faces).items():
                 row[f"{name}_touches_{k}"] = v
 
-    # mandible halves at the mandible's own world-x centroid: condyle region = top of each half
-    mand = L == 1
-    if mand.any():
-        idx = np.argwhere(mand)
+    # each jaw split at its own world-x median into halves: does a half touch the top face (mandible:
+    # condyle cut) or a lateral / posterior face? Halves are named in header world terms (x < median = "left").
+    for jaw, lab in (("mandible", 1), ("maxilla", 2)):
+        jm = L == lab
+        if not jm.any():
+            continue
+        idx = np.argwhere(jm)
         wx = (aff @ np.c_[idx, np.ones(len(idx))].T)[0]
         cx = float(np.median(wx))
         for side, sel in [("left", wx < cx), ("right", wx >= cx)]:
-            half = np.zeros_like(mand)
-            pts = idx[sel]
-            half[tuple(pts.T)] = True
+            half = np.zeros_like(jm)
+            half[tuple(idx[sel].T)] = True
             t = touches(half, faces)
-            row[f"mandible_{side}_touches_sup"] = t["sup"]
-            row[f"mandible_{side}_touches_lateral"] = t[side]
-            row[f"mandible_{side}_touches_post"] = t["post"]
+            row[f"{jaw}_{side}_touches_sup"] = t["sup"]
+            row[f"{jaw}_{side}_touches_lateral"] = t[side]
+            row[f"{jaw}_{side}_touches_post"] = t["post"]
 
     teeth_rows = []
     for t in ALL_TEETH:
@@ -131,6 +143,7 @@ def case_features(case_id: str, tf4_path: str, tf3_dir: str,
         n = int(m.sum())
         r = {"case_id": case_id, "fdi": t, "present": n > 0, "vox": n, "mm3": round(n * vox_mm3, 1)}
         if n:
+            r["cx"] = centroid_x(m, aff)
             tt = touches(m, faces)
             root_face = "sup" if t in UPPER_TEETH else "inf"
             r.update({"root_tip_cut": tt[root_face], "crown_cut": tt["inf" if root_face == "sup" else "sup"],

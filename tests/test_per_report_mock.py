@@ -75,7 +75,7 @@ def test_parser_end_to_end(tmp_path, server):
         if f.is_file() and f.suffix in {".json", ".parquet"}:
             assert b"synthetic placeholder" not in f.read_bytes()
     # scoring works on these outputs (self vs self -> F1 = 1)
-    assert score_main(["--ours", str(out / "instances_en.parquet"), "--lumetti", str(out / "instances_en.parquet"),
+    assert score_main(["--ours", str(out / "instances_en.parquet"), "--ref-parse", str(out / "instances_en.parquet"),
                        "--results-dir", str(tmp_path / "res")]) == 0
 
 
@@ -105,3 +105,47 @@ def test_retry_with_repetition_penalty(tmp_path):
         assert ext2 is not None and meta2["repetition_penalty"] == 1.1
     finally:
         srv.shutdown()
+
+
+def test_salvage_schema_valid_but_invalid_findings():
+    """Review #1: schema-valid output that breaks the per-type anchor rule no longer loses the report."""
+    bad = {"findings": [{"finding_type": "MandibularCanalCourse", "tooth_ids": ["38", "48"]},   # no side
+                        {"finding_type": "JawAtrophy", "tooth_ids": ["46"]},                        # no quadrant
+                        {"finding_type": "ToothAbsence", "tooth_ids": []},                          # unanchorable
+                        {"finding_type": "Caries", "tooth_ids": ["36"]}],
+           "not_assessable": []}
+    ext, info = per_report.parse_extraction(json.dumps(bad))
+    slots = {(f.finding_type.value, s) for f in ext.findings for s in f.slots()}
+    assert slots == {("MandibularCanalCourse", "Left"), ("MandibularCanalCourse", "Right"),
+                     ("JawAtrophy", "QuadrantIV"), ("Caries", "36")}
+    assert info == {"salvaged": True, "repaired_findings": 2, "dropped_findings": 1}
+    canal = {f.side: f.tooth_ids for f in ext.findings if f.finding_type.value == "MandibularCanalCourse"}
+    assert canal == {"Left": ["38"], "Right": ["48"]}                 # tooth ids split per derived side
+    ok, info_ok = per_report.parse_extraction(json.dumps(ANSWER))
+    assert info_ok == {"salvaged": False} and len(ok.findings) == 2
+    with pytest.raises(json.JSONDecodeError):
+        per_report.parse_extraction('{"findings": [{"finding_type": "Caries", "tooth_ids": ["36"')
+
+
+def test_resume_survives_partial_file(tmp_path, server):
+    man = tmp_path / "manifest"
+    man.mkdir()
+    p = tmp_path / "data" / "P001" / "reports_en" / "cbct_21_100.txt"
+    p.parent.mkdir(parents=True)
+    p.write_text("synthetic placeholder text")
+    pd.DataFrame([{"case_id": "P001", "lang": "en", "report_id": "21_100", "path": str(p)}]).to_parquet(
+        man / "reports.parquet")
+    out = tmp_path / "run"
+    (out / "per_report").mkdir(parents=True)
+    (out / "per_report" / "P001__21_100__en.json").write_text('{"meta": {"case_id": "P0')   # killed mid-write
+    assert per_report.main(["--manifest", str(man), "--lang", "en", "--server", server, "--model", "fake",
+                            "--out-dir", str(out), "--workers", "1"]) == 0
+    d = json.loads((out / "per_report" / "P001__21_100__en.json").read_text())
+    assert d["extraction"] is not None and not list((out / "per_report").glob("*.tmp"))
+
+
+def test_report_ok_treats_dropped_findings_as_failed():
+    meta = pd.DataFrame({"error": [None, None, "invalid_json", None],
+                         "dropped_findings": [None, 0, None, 2]})
+    assert per_report.report_ok(meta).tolist() == [True, True, False, False]
+    assert per_report.report_ok(meta.drop(columns="dropped_findings")).tolist() == [True, True, False, True]

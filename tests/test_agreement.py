@@ -66,7 +66,8 @@ def test_load_visibility(tmp_path):
                    "canal_left_vox": 5, "canal_right_vox": 0, "sinus_left_vox": 0, "sinus_right_vox": np.nan,
                    "mandible_left_touches_sup": True, "mandible_right_touches_sup": False,
                    "mandible_left_touches_post": False, "mandible_right_touches_post": False,
-                   "q1_teeth_touch_lateral_or_post": True, "q2_teeth_touch_lateral_or_post": False},
+                   "q1_teeth_touch_lateral_or_post": True, "q2_teeth_touch_lateral_or_post": False,
+                   "q1_n_teeth": 1, "q2_n_teeth": 2},
                   {"case_id": "P002", "label_found": False}]).to_parquet(d / "case_features.parquet")
     pd.DataFrame([{"case_id": "P001", "fdi": 16, "present": True, "root_tip_cut": True},
                   {"case_id": "P001", "fdi": 36, "present": True, "root_tip_cut": False},
@@ -80,7 +81,10 @@ def test_load_visibility(tmp_path):
     assert not p["condyle_Right"] and not p["condyle_Left"]     # one half cut at the top -> neither side
     assert p["quadrant_edge"]["1"] and not p["quadrant_edge"]["2"]
     assert p["quadrant_edge"]["3"]                              # missing flag -> treated as touching
-    m = load_visibility([d], mirror_teeth=True)["P001"]
+    sw = load_visibility([d], swap_side_centres="P")["P001"]
+    assert sw["canal_Right"] and not sw["canal_Left"] and sw["teeth"] == {"16", "36"}   # sides only, not teeth
+    m = load_visibility([d], mirror_centres="PFS")["P001"]
+    assert load_visibility([d], mirror_centres="A")["P001"]["teeth"] == {"16", "36"}   # other centre: as is
     assert m["teeth"] == {"26", "46"} and m["root_cut"] == {"26"} and not m["quadrant_edge"]["1"]
 
 
@@ -149,3 +153,22 @@ def test_low_double_read_support_not_supported():
                          "n": s.n_reports, "k": s.k})
     r = fit_type(inst, n_boot=50, seed=0)
     assert not r["supported"]                   # far fewer than 30 double-read mentions
+
+
+def test_empty_quadrant_needs_whole_jaw_inside(tmp_path):
+    """Review #4: a quadrant without mask teeth is not assessable just because no tooth touches an edge."""
+    d = tmp_path / "v"
+    d.mkdir()
+    base = {"label_found": True, "mandible_vox": 100, "maxilla_vox": 0, "q3_n_teeth": 7, "q4_n_teeth": 0,
+            "q3_teeth_touch_lateral_or_post": False, "q4_teeth_touch_lateral_or_post": False}
+    inside = {f"mandible_{h}_touches_{f}": False for h in ("left", "right") for f in ("lateral", "post")}
+    pd.DataFrame([{**base, "case_id": "P001"},                                   # jaw-half flags missing
+                  {**base, "case_id": "P002", **inside, "mandible_right_touches_lateral": True},
+                  {**base, "case_id": "P003", **inside}]).to_parquet(d / "case_features.parquet")
+    pd.DataFrame([{"case_id": c, "fdi": 30 + i, "present": True, "root_tip_cut": False}
+                  for c in ("P001", "P002", "P003") for i in range(1, 8)]).to_parquet(d / "tooth_features.parquet")
+    v = load_visibility([d], mirror_centres="P")          # label q3 teeth -> reports' 41-47; empty label q4 -> 3x
+    assert v["P001"]["quadrant_edge"]["3"] and v["P002"]["quadrant_edge"]["3"]
+    assert not is_visible(v["P001"], "ToothAbsence", "36") and not is_visible(v["P002"], "ToothAbsence", "36")
+    assert not v["P003"]["quadrant_edge"]["3"] and is_visible(v["P003"], "ToothAbsence", "36")
+    assert not v["P001"]["quadrant_edge"]["4"]            # quadrant with teeth: unchanged rule

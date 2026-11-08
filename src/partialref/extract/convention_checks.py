@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from partialref.extract.score_parser import scoring_universe
+
 QUAD_DIGIT = {"QuadrantI": "1", "QuadrantII": "2", "QuadrantIII": "3", "QuadrantIV": "4"}
 
 
@@ -84,8 +86,7 @@ def side_consistency(f: pd.DataFrame) -> dict:
     return out
 
 
-def absence_errors(ours_inst: pd.DataFrame, ref_inst: pd.DataFrame) -> dict:
-    cases = set(ours_inst.case_id) & set(ref_inst.case_id)
+def absence_errors(ours_inst: pd.DataFrame, ref_inst: pd.DataFrame, cases: set[str]) -> dict:
     o = {tuple(x) for x in ours_inst[(ours_inst.finding_type == "ToothAbsence") & ours_inst.case_id.isin(cases)]
          [["case_id", "slot"]].to_numpy()}
     r = {tuple(x) for x in ref_inst[(ref_inst.finding_type == "ToothAbsence") & ref_inst.case_id.isin(cases)]
@@ -106,8 +107,7 @@ def absence_errors(ours_inst: pd.DataFrame, ref_inst: pd.DataFrame) -> dict:
             "fp_concentration": conc(fp), "fn_concentration": conc(fn)}
 
 
-def mirrored_canal_by_centre(ours_inst, ref_inst) -> dict:
-    cases = set(ours_inst.case_id) & set(ref_inst.case_id)
+def mirrored_canal_by_centre(ours_inst, ref_inst, cases: set[str]) -> dict:
     o = {tuple(x) for x in ours_inst[(ours_inst.finding_type == "MandibularCanalCourse") & ours_inst.case_id.isin(cases)]
          [["case_id", "slot"]].to_numpy()}
     r = {tuple(x) for x in ref_inst[(ref_inst.finding_type == "MandibularCanalCourse") & ref_inst.case_id.isin(cases)]
@@ -129,7 +129,10 @@ def main(argv: list[str] | None = None) -> int:
     lf = lf[~lf.unknown_type & ~lf.case_id.isin(a.exclude)].copy()
     lf["tooth_ids"] = lf["tooth_ids"].map(list)
     of = ours_findings(a.run, a.lang)
-    of = of[~of.case_id.isin(a.exclude) & of.case_id.isin(set(lf.case_id))]
+    cases, _, _ = scoring_universe(a.run / f"instances_{a.lang}.parquet", lumetti=a.lumetti_dir / "instances.parquet",
+                                   exclude=a.exclude)
+    lf = lf[lf.case_id.isin(cases)]
+    of = of[of.case_id.isin(cases)]
     oi = pd.read_parquet(a.run / f"instances_{a.lang}.parquet")
     li = pd.read_parquet(a.lumetti_dir / "instances.parquet")
     oi, li = oi[~oi.case_id.isin(a.exclude)], li[~li.case_id.isin(a.exclude)]
@@ -138,8 +141,8 @@ def main(argv: list[str] | None = None) -> int:
         "B_development_pathology_qualifiers": {"lumetti": qualifier_values(lf, "ToothDevelopmentPathology"),
                                                "ours": qualifier_values(of, "ToothDevelopmentPathology")},
         "C_side_consistency": {"lumetti": side_consistency(lf), "ours": side_consistency(of)},
-        "D_tooth_absence_errors": absence_errors(oi, li),
-        "E_mirrored_canal": mirrored_canal_by_centre(oi, li),
+        "D_tooth_absence_errors": absence_errors(oi, li, cases),
+        "E_mirrored_canal": mirrored_canal_by_centre(oi, li, cases),
     }
     print(json.dumps(res, indent=1, default=str))
     return 0

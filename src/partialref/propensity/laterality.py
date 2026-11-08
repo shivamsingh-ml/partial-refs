@@ -32,7 +32,8 @@ from pathlib import Path
 import pandas as pd
 
 from partialref.extract.ontology import FindingType, slot_kind
-from partialref.propensity.agreement import NEEDS_TOOTH, PERMANENT, _mirror_tooth, is_visible, load_visibility
+from partialref.propensity.agreement import (NEEDS_TOOTH, PERMANENT, _mirror_tooth, is_visible, load_visibility,
+                                             select_reports)
 from partialref.provenance import make_run_id, write_provenance
 
 TOOTH_TYPES = [t.value for t in FindingType if slot_kind(t) == "tooth"]
@@ -80,9 +81,11 @@ def residual_check(m: pd.DataFrame, n_by_case: dict, vis_mirror: dict) -> pd.Dat
     return k
 
 
-def swap_check(m: pd.DataFrame, reports_by_case: dict[str, list[str]]) -> pd.DataFrame:
+def swap_check(m: pd.DataFrame, reports_by_case: dict[str, list[str]],
+               collect: list | None = None) -> pd.DataFrame:
     """Per finding type, summed over all reader pairs of double-read cases. reports_by_case lists every
-    usable report of a case, also ones without any tooth finding (a silent reader is still a reader)."""
+    usable report of a case, also ones without any tooth finding (a silent reader is still a reader).
+    ``collect``: if a list, one dict per left/right swap and neighbour shift is appended (for audit sheets)."""
     t = m[m["finding_type"].isin(TOOTH_TYPES) & m["slot"].isin(PERM)]
     sets = t.groupby(["case_id", "report_id", "finding_type"])["slot"].agg(set).to_dict()
     cols = ["pairs", "both", "unmatched", "left_right_swaps", "up_down_swaps", "neighbour_shifts"]
@@ -98,9 +101,16 @@ def swap_check(m: pd.DataFrame, reports_by_case: dict[str, list[str]]) -> pd.Dat
                 a["pairs"] += 1
                 a["both"] += len(s1 & s2)
                 a["unmatched"] += len(o1) + len(o2)
-                a["left_right_swaps"] += sum(1 for s in o1 if s[1] != "1" and _mirror_tooth(s) in o2)
+                lr = [(s, _mirror_tooth(s)) for s in sorted(o1) if s[1] != "1" and _mirror_tooth(s) in o2]
+                nb = [(s, n) for s in sorted(o1) for n in sorted(_neighbours(s) & o2)]   # each adjacent pair once
+                a["left_right_swaps"] += len(lr)
                 a["up_down_swaps"] += sum(1 for s in o1 if s[1] != "1" and _vert(s) in o2)
-                a["neighbour_shifts"] += sum(1 for s in o1 if _neighbours(s) & o2)
+                a["neighbour_shifts"] += len(nb)
+                if collect is not None:
+                    collect += [{"case_id": c, "report_a": r1, "report_b": r2, "finding_type": ft,
+                                 "slot_a": sa, "slot_b": sb, "kind": kind}
+                                for kind, pairs in (("left_right_swap", lr), ("neighbour_shift", nb))
+                                for sa, sb in pairs]
     return pd.DataFrame([{"finding_type": ft, **v} for ft, v in acc.items()])
 
 
@@ -118,15 +128,10 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     # same report selection and failed-parse handling as partialref.propensity.agreement
-    reps = pd.read_parquet(a.manifest / "reports.parquet")
-    reps = reps[(reps["lang"] == a.lang) & reps["case_id"].str[0].isin(list(a.centres))
-                & ~reps["case_id"].isin(a.exclude)][["case_id", "report_id"]]
-    meta = pd.read_parquet(a.parse_run / f"extractions_{a.lang}.parquet")
-    failed = set(map(tuple, meta.loc[meta["error"].notna(), ["case_id", "report_id"]].to_numpy()))
-    parsed = set(map(tuple, meta[["case_id", "report_id"]].to_numpy()))
-    missing = {(c, r) for c, r in reps.itertuples(index=False)} - parsed
-    bad = {c for c, _ in failed | missing}
-    vis, vis_m = load_visibility(a.vis), load_visibility(a.vis, mirror_teeth=True)
+    reps, bad_reports = select_reports(a.manifest, a.parse_run, a.lang, a.centres, a.exclude)
+    reps = reps[["case_id", "report_id"]]
+    bad = {c for c, _ in bad_reports}
+    vis, vis_m = load_visibility(a.vis), load_visibility(a.vis, mirror_centres=a.centres)
     rep = reps[~reps["case_id"].isin(bad) & reps["case_id"].isin(vis.keys())]
     n_by_case = rep.groupby("case_id")["report_id"].nunique().to_dict()
     m = pd.read_parquet(a.parse_run / f"instances_{a.lang}.parquet") \

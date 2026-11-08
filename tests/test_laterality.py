@@ -60,3 +60,12 @@ def test_silent_reader_counts_as_pair():
     m = mentions([("P001", "a", "Caries", "36")])
     sw = swap_check(m, {"P001": ["a", "b"]}).set_index("finding_type")
     assert sw.loc["Caries", "pairs"] == 1 and sw.loc["Caries", "unmatched"] == 1
+
+
+def test_neighbour_shifts_symmetric_in_reader_order():
+    rows = [("P001", "a", "Caries", "36"), ("P001", "b", "Caries", "35"), ("P001", "b", "Caries", "37")]
+    m = mentions(rows)
+    m2 = m.assign(report_id=m["report_id"].map({"a": "b", "b": "a"}))
+    n1 = swap_check(m, {"P001": ["a", "b"]}).set_index("finding_type").loc["Caries", "neighbour_shifts"]
+    n2 = swap_check(m2, {"P001": ["a", "b"]}).set_index("finding_type").loc["Caries", "neighbour_shifts"]
+    assert n1 == n2 == 2

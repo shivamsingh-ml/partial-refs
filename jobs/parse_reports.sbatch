@@ -33,12 +33,20 @@ echo "node=$(hostname) job=$SLURM_JOB_ID start=$(date -Is) model=$MODEL_DIR limi
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 VLLM=$HOME/miniconda3/envs/pr_serve/bin/vllm
-NOLOG=""; "$VLLM" serve --help=all 2>/dev/null | grep -q -- "--disable-log-requests" && NOLOG="--disable-log-requests"
+# capture first, then grep: with pipefail, `help | grep -q` can fail via SIGPIPE even when the flag exists
+HELP=$("$VLLM" serve --help=all 2>/dev/null || true)
+NOLOG=""; grep -q -- "--disable-log-requests" <<<"$HELP" && NOLOG="--disable-log-requests"
 echo "request-logging flag: ${NOLOG:-<none; default off in this version or unsupported>}"
 "$VLLM" serve "$MODEL_DIR" --served-model-name "$NAME" --port "$PORT" --host 127.0.0.1 \
   --max-model-len 16384 --gpu-memory-utilization 0.92 --dtype auto $NOLOG > "$RUN/vllm_server.log" 2>&1 &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true' EXIT
+cleanup() {   # always: stop the server, then the DUA check (count only, never print the lines)
+  kill $SERVER 2>/dev/null || true
+  local n; n=$(grep -cE "Received request|prompt:|Prompt:" "$RUN/vllm_server.log" 2>/dev/null || true)
+  echo "server-log lines that look like logged requests: ${n:-0}"
+  if [[ "${n:-0}" != "0" ]]; then echo "WARNING: request logging appears ON; deleting the server log"; rm -f "$RUN/vllm_server.log"; fi
+}
+trap cleanup EXIT
 for i in $(seq 1 120); do
   curl -sf "http://127.0.0.1:$PORT/v1/models" > /dev/null && { echo "server ready after $((i*10)) s"; break; }
   kill -0 $SERVER 2>/dev/null || { echo "server died"; grep -E "ERROR|Error|Traceback" "$RUN/vllm_server.log" | tail -5; exit 1; }
@@ -56,16 +64,16 @@ for L in ${LANGS//,/ }; do
   done
 done
 if [[ "${REPEAT:-0}" == "1" && ",$LANGS," == *",en,"* ]]; then
-  echo "--- run-to-run check: second EN pass (temperature 0), scored against the first"
+  echo "--- run-to-run check: second EN pass (temperature 0), per report and per case vs the first"
   mkdir -p "$RUN/repeat"
   python -m partialref.extract.per_report --manifest "$MANIFEST" --lang en --server "http://127.0.0.1:$PORT" \
     --model "$NAME" --model-path "$MODEL_DIR" --limit-cases "$LIMIT" --out-dir "$RUN/repeat"
-  python -m partialref.extract.score_parser --ours "$RUN/repeat/instances_en.parquet" --lumetti "$RUN/instances_en.parquet" \
+  python -m partialref.extract.score_parser --ours "$RUN/repeat/instances_en.parquet" --ref-parse "$RUN/instances_en.parquet" \
     --exclude "$EXCLUDE" --tag "repeat-en-${NAME}-n${LIMIT}"
 fi
 if [[ ",$LANGS," == *",en,"* && ",$LANGS," == *",it,"* ]]; then
   echo "--- translation check: EN extractions scored against IT extractions (same parser)"
-  python -m partialref.extract.score_parser --ours "$RUN/instances_en.parquet" --lumetti "$RUN/instances_it.parquet" \
+  python -m partialref.extract.score_parser --ours "$RUN/instances_en.parquet" --ref-parse "$RUN/instances_it.parquet" \
     --exclude "$EXCLUDE" --tag "en-vs-it-${NAME}-n${LIMIT}"
 fi
 echo "server errors (if any):"; grep -cE " ERROR |Traceback" "$RUN/vllm_server.log" || true

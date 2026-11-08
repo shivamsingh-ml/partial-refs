@@ -362,3 +362,49 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   sides in nearly all cases, so this check cannot tell). π changes ≤ 0.015 for every type (pooling hides
   it), but per-slot analyses (T3) need the mirror. Evidence:
   `results/propensity/20261108-2349-66fd4d1-propensity-gt-v2{,-mirror}/summary.json`.
+- **Laterality diagnostics (job 615021, 14B parse v2, 2026-11-09), evidence `results/propensity/20261109-0011-375148b-laterality/`.**
+  (1) Per case, informative cases (≥1 reported tooth finding on a mask-absent tooth, either way): mirrored
+  mask fits better in 214, unmirrored in 13, tie 37 (P 161/9/29, F 30/3/6, S 23/1/2) → the flip is a
+  dataset-wide convention, not individual scans. Unmirrored better by ≥2: F028, F055, P230, S0019 →
+  candidates for individually flipped scans or misfiled reports; added to the visual check list with
+  S0015, not excluded yet. (2) Residual after mirroring: 214 instances; 162 reported by one of several
+  readers (reader or parser error), 25 by ≥2 readers (mask/visibility problem: Endo 15, TDP 7, Resto 3),
+  27 in single-read cases. (3) Reader-pair side swaps (36 vs 46) 22 vs up/down control (36 vs 26) 34, out of
+  3,128 unmatched mentions in 1,346 reader pairs; neighbour shifts 57 → no evidence of side confusion by
+  clinicians above chance; numbering confusions explain < 2 % of between-reader disagreement, so
+  disagreement is overwhelmingly omission (what π measures). Re-run on the frozen parser.
+- **Centre A predicted masks v1 are invalid at tooth level (bug in our jobs/seg_centreA.sbatch, found
+  2026-11-09).** `run_segmentation` already returns the predictor's FDI scheme
+  (`task1_inference.BasePredictor.postprocessing`: teeth 11-48, canals 51-53, pulp 50); our job applied
+  `train_to_original` (sequential → TF3) a second time. Effect: tooth IDs shifted (FDI 21-26 → 23-28, 27/28 →
+  31/32, 31-34 → 35-38, 35-38 → 41-44, 41/42 → 47/48, 43-45 → 103-105, 46 → 199), FDI 47/48 and the
+  incisive/lingual canals and pulp lost (→ 0). Evidence: in
+  `results/audit/20261108-2033-b59b375-dirty-visibility-features-A/tooth_features.parquet` FDI 21, 22, 33, 34,
+  45, 46 never occur in 95 cases — exactly the IDs this double mapping cannot produce. Not used in any GT
+  result (T2 and laterality ran on P/F/S only). Mandible, maxilla, IAN canals, sinuses (ids 1-6) were
+  unaffected, so the earlier A sinus/condyle visibility shares stand; tooth-based A features (root tips,
+  quadrant edges) do not. Fix: compose the predictor's sequential→FDI rule with `train_to_original`
+  (teeth unchanged, 51/52/53 → 103/104/105, 50 → 199), fail on unexpected labels, new output dir
+  `results/seg/centreA_umamba2_foldall_v2`; re-run segmentation + A visibility features.
+- **V2V2R already corrects left/right at inference** (`external/odin2026/segmentation.py`, verified in Aug 2026
+  on F030/P061/A046 single-implant reports): TF4 volumes are stored L-first (LAS/LPS), the model was trained on
+  R-first TF3 arrays → flip array axis 2 for L-first input and flip the mask back. Same root cause as the
+  TF3-label vs report mirroring found in T2 (214 vs 13 cases), now confirmed at scale. Consequence: centre A
+  masks from `run_segmentation` are already in report convention → `mirror_centres` stays "PFS" (A not
+  mirrored), to be confirmed by the laterality check on A once v2 masks exist.
+- **Independent review of all code incl. parser (subagent, code + synthetic data only, 2026-11-09) → fixes,
+  then fix verification by the same reviewer.** Parser: schema-valid output that breaks the per-type anchor
+  rule no longer loses the report (salvage per finding: side/quadrant derived from tooth digits, tooth ids
+  split per side; unanchorable findings dropped and counted); a report with any dropped finding counts as
+  failed everywhere (T1 universe, T2/laterality/audit), since a dropped finding looks like an omission;
+  atomic per-report writes. Scoring: the scored universe is fixed in advance (fully parsed cases ∩ Lumetti
+  files) instead of "cases with ≥1 instance in both" (which hid misses in empty/failed cases); run-to-run and
+  EN-vs-IT checks are now per report (case, report, type, slot) — the earlier "run-to-run F1 0.985" was a
+  per-case union and understated per-report parser noise; Lumetti type level uses findings.parquet (56
+  findings without anchor kept). Visibility: a quadrant without mask teeth is assessable only if the whole
+  jaw (both halves) stays clear of lateral/posterior faces (stricter than §2.6's per-half wording, chosen
+  because the jaw-half ↔ report-side mapping is not settled; check the share of edentulous arches lost once
+  features are re-run). side_geometry: quadrant ↔ report-side mapping per centre (mirrored P/F/S vs report-
+  convention A). DUA: vLLM request-log check in the EXIT trap; audit sheet without free text, .tsv, excluded
+  from rsync. Not a problem: report file names (2000/2000 parse). All T1 numbers so far were produced with
+  the old scorer and will be re-scored.

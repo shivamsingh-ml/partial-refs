@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from partialref.extract.score_parser import scoring_universe
 from partialref.provenance import make_run_id, write_provenance
 
 
@@ -41,8 +42,8 @@ def neighbours(slot: str) -> list[str]:
     return []
 
 
-def diagnose(ours: pd.DataFrame, ref: pd.DataFrame) -> pd.DataFrame:
-    cases = set(ours.case_id) & set(ref.case_id)
+def diagnose(ours: pd.DataFrame, ref: pd.DataFrame, cases: set[str]) -> pd.DataFrame:
+    """cases: scored universe from partialref.extract.score_parser.scoring_universe."""
     o = ours[ours.case_id.isin(cases)][["case_id", "finding_type", "slot"]].drop_duplicates()
     r = ref[ref.case_id.isin(cases)][["case_id", "finding_type", "slot"]].drop_duplicates()
     oset, rset = set(map(tuple, o.to_numpy())), set(map(tuple, r.to_numpy()))
@@ -79,8 +80,8 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     ours = pd.read_parquet(a.run / f"instances_{a.lang}.parquet")
     ref = pd.read_parquet(a.lumetti)
-    ours, ref = ours[~ours.case_id.isin(a.exclude)], ref[~ref.case_id.isin(a.exclude)]
-    d = diagnose(ours, ref)
+    cases, _, _ = scoring_universe(a.run / f"instances_{a.lang}.parquet", lumetti=a.lumetti, exclude=a.exclude)
+    d = diagnose(ours, ref, cases)
 
     # condyle findings outside A vs our not_assessable statements for the same reports
     na = pd.read_parquet(a.run / f"not_assessable_{a.lang}.parquet")
