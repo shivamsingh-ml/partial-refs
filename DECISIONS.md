@@ -473,3 +473,13 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   log (IDs and codes only) comes back by scp and is validated by `partialref.review.import_log` (unknown IDs,
   unexpected fields, free text, invalid codes rejected) before use. The cluster version (jobs/review_app.sbatch,
   token in an owner-only file because the home directory is group-readable) stays as an alternative.
+- **T1 criterion replaced (Shivam, 2026-11-09).** The old guidance "slot F1 ≥ 0.90 for ≥ 6 common types" was a
+  conventional bar proposed on 8 Nov, not derived from data, and measured agreement with Lumetti rather than
+  correctness. What matters is whether parser error changes the conclusion about π: a missed mention looks like
+  an omission (observed π ≈ true π × parser recall; false additions push the other way), so the tolerable error
+  depends on how far π is from 1 (caries π 0.26 survives a recall of 0.85; root canal treatment π 0.83 would not).
+  New T1, per finding type: parser recall and precision from Shivam's blinded review (with CIs) → π corrected for
+  parser error with uncertainty propagated → the type passes if the corrected π's upper 95 % CI is < 0.90; failing
+  types are reported as "parser-limited" and kept out of headline claims; plus no systematic error pattern.
+  HANDOFF §7 T1 row and decision rule updated. The same "does it change the conclusion" logic is to be applied
+  when T3/T4 guidance values are reviewed.

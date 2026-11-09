@@ -435,12 +435,12 @@ Few-shot examples for the parser are synthetic (written by Claude, no real repor
 
 | Test | What | Pass if |
 | --- | --- | --- |
-| T1 Parser | Local LLM parses all 1000 EN reports (Lumetti ontology; IT also parsed for a translation check). **Judged by Shivam's blinded review against the report text** (review app, ~60 held-out reports with extra reports for rarer types; revised 2026-11-09); agreement with Lumetti's per-patient labels is an internal early warning only and is **not reported** | precision and recall ≥ 0.90 in the review for the common finding types; no systematic error pattern |
+| T1 Parser | Local LLM parses all 1000 EN reports (Lumetti ontology; IT also parsed for a translation check). **Judged by Shivam's blinded review against the report text** (review app, ~60 held-out reports with extra reports for rarer types; revised 2026-11-09); agreement with Lumetti's per-patient labels is an internal early warning only and is **not reported** | **Decision-relevant, per finding type (revised 2026-11-09):** parser recall and precision measured in the review (with CIs) → π corrected for parser error (uncertainty propagated); a type passes if its parser-corrected π still has upper 95 % CI < 0.90 (references still clearly partial after allowing for parser error); types that fail are reported as "parser-limited" and kept out of headline claims. Plus: no systematic error pattern in the review (e.g. the "e.d." misreading). No fixed F1 bar. |
 | T2 Propensity | π per common finding type, pooled over centres, visible instances, double-read cases (excl. P116/P117/P260/P261), bootstrap CIs | ≥ 3 finding types with upper 95 % CI of π < 0.90 and CI width ≤ 0.30 |
 | T3 Mask agreement | Tier-1 findings (missing teeth, implants, crowns/bridges): π from two readers vs π measured against TF3 masks; false-mention rate φ vs masks | CIs overlap for ≥ 2 of 3 types and φ ≤ 0.05 |
 | T4 Effect size | Plug estimated (p, π) into a simulated scoring of realistic systems (a conservative and a complete one) | corrected − raw precision ≥ 5 points for common types, and/or the ranking of the two systems flips |
 
-Decision rules: all pass → continue with M0.5/M1/M2/M3 as planned. **T1 fails** → fix the parser first
+Decision rules: all pass → continue with M0.5/M1/M2/M3 as planned. **T1 fails** (a systematic error pattern, or too few types survive parser correction) → fix the parser first
 (nothing else is interpretable). **T3 fails** → disagreement is not mainly omission: switch to a
 false-positive-aware model (φ from masks / 3-report cases) and partial-identification bounds (§12.5 D).
 **T2 or T4 fails** (π ≈ 1 or tiny effect) → pivot to a measurement/benchmark-analysis paper on
