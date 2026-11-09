@@ -18,6 +18,12 @@
   (choose on tune, report held-out) + audit sheet for Shivam (open question: add "Lumetti-only" and
   "both agree" samples); (5) T3, T4, REPORT_GT.md. Waiting on Shivam: visual check of S0015, F028, F055,
   P230, S0019; V2V2R facts.py comment (were VLM training facts sequential-label?).
+- Added after commit (Shivam, late Sun): **no dropping of reports our parser fails on** — failed reports are
+  normal length (generation loops, not content). Build a retry sequence for failures only (repetition
+  penalty 1.1 → 1.3 → temperature 0.3 with fixed seed; record the setting per report), test on the mock
+  server, then one short A100-80GB job to re-parse the ~10 failed 32B reports (EN 4, IT 6) → target
+  1000/1000; dropping only for named residual failures. Also decide EN vs IT as primary for π from the
+  per-report EN-vs-IT agreement in the re-score (IT = dentists' originals; EN = GPT-5.2 translations).
 
 ## Update Sun 8 Nov 2026
 - Plan changed: **go/no-go test GT first** (HANDOFF §7 GT, thresholds = guidance). No V2V2R/segmentation

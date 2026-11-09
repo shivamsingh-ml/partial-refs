@@ -71,7 +71,8 @@ def test_report_scan_match_no_evidence():
 def test_audit_sheet_reasons_blinding_and_pairs():
     m = pd.DataFrame([("P001", "a", "Caries", "36"), ("P001", "b", "Caries", "46"),          # L/R swap
                       ("P001", "a", "EndodonticTreatment", "17"),                            # 17 absent in mask
-                      ("P001", "a", "DentalImplant", "24")],
+                      ("P001", "a", "DentalImplant", "24"),
+                      ("P001", "a", "ToothAbsence", "region:UpperArch")],                       # never in Lumetti
                      columns=["case_id", "report_id", "finding_type", "slot"])
     other = m.iloc[:2].copy()                                                                # misses 17, 24
     lum = pd.DataFrame({"case_id": ["P001"], "finding_type": ["Caries"], "slot": ["36"]})
@@ -79,7 +80,7 @@ def test_audit_sheet_reasons_blinding_and_pairs():
     cand = candidate_items(m, {"P001": ["a", "b"]}, v, other, lum)
     reasons = cand.groupby("reason").size().to_dict()
     assert reasons["left_right_swap"] == 2 and reasons["residual_one_reader"] == 1
-    assert reasons["this_parser_only"] == 2 and reasons["not_in_lumetti"] == 3
+    assert reasons["this_parser_only"] == 3 and reasons["not_in_lumetti"] == 3   # region slot not a candidate
     s = sample_items(cand, per_reason=10, seed=0)
     assert s.duplicated(["case_id", "report_id", "finding_type", "slot"]).sum() == 0
     assert set(s["item_id"]) == {f"item{i:03d}" for i in range(len(s))}

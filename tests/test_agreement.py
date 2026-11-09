@@ -172,3 +172,34 @@ def test_empty_quadrant_needs_whole_jaw_inside(tmp_path):
     assert not is_visible(v["P001"], "ToothAbsence", "36") and not is_visible(v["P002"], "ToothAbsence", "36")
     assert not v["P003"]["quadrant_edge"]["3"] and is_visible(v["P003"], "ToothAbsence", "36")
     assert not v["P001"]["quadrant_edge"]["4"]            # quadrant with teeth: unchanged rule
+
+
+def test_region_absence_makes_reader_uninformative_not_omitting():
+    """Parser v3: reader a says 'partial edentulism of the upper arch' (no numbers), reader b names 16.
+    For tooth 16, a must not count as an omission: n drops to 1 (only b), k = 1. For tooth 17 neither
+    named it: n = 1 (a uninformative), k = 0. Lower teeth: both readers informative (n = 2)."""
+    reports = pd.DataFrame({"case_id": ["P001", "P001"], "report_id": ["a", "b"]})
+    mentions = pd.DataFrame({"case_id": ["P001", "P001"], "report_id": ["a", "b"],
+                             "finding_type": ["ToothAbsence", "ToothAbsence"], "slot": ["region:UpperArch", "16"]})
+    v = vis_case(teeth={"11", "36", "46"})
+    inst, info = build_instances(reports, mentions, {"P001": v}, set(), ["ToothAbsence"], region_mode="uninformative")
+    r = inst.set_index("slot")
+    assert (r.loc["16", "n"], r.loc["16", "k"]) == (1, 1)
+    assert (r.loc["17", "n"], r.loc["17", "k"]) == (1, 0)
+    assert r.loc["37", "n"] == 2
+    assert info["region_mentions"] == 1 and info["reader_slot_pairs_uninformative_by_region"] == 16
+
+
+def test_region_reader_stays_informative_for_teeth_it_calls_present_and_omission_mode():
+    reports = pd.DataFrame({"case_id": ["P001", "P001"], "report_id": ["a", "b"]})
+    mentions = pd.DataFrame({"case_id": ["P001"] * 3, "report_id": ["a", "a", "b"],
+                             "finding_type": ["ToothAbsence", "Caries", "ToothAbsence"],
+                             "slot": ["region:UpperArch", "26", "16"]})
+    v = vis_case(teeth={"11", "26", "36"})
+    inst, info = build_instances(reports, mentions, {"P001": v}, set(), ["ToothAbsence"], region_mode="uninformative")
+    r = inst.set_index("slot")
+    assert r.loc["26", "n"] == 2                        # a named 26 with caries -> informative (not missing)
+    assert r.loc["17", "n"] == 1 and info["reader_slot_pairs_uninformative_by_region"] == 15
+    inst2, info2 = build_instances(reports, mentions, {"P001": v}, set(), ["ToothAbsence"])   # default = main (B)
+    r2 = inst2.set_index("slot")
+    assert (r2.loc["16", "n"], r2.loc["16", "k"]) == (2, 1) and info2["reader_slot_pairs_uninformative_by_region"] == 0

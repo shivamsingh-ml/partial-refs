@@ -408,3 +408,46 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   convention A). DUA: vLLM request-log check in the EXIT trap; audit sheet without free text, .tsv, excluded
   from rsync. Not a problem: report file names (2000/2000 parse). All T1 numbers so far were produced with
   the old scorer and will be re-scored.
+- **Overnight results 2026-11-09 (jobs 615028-615031, git 794924d; run ids carry "dirty" only because
+  reports/STATUS.md was uncommitted).**
+  (1) **Parser re-scored with the fixed scorer** (`results/extract/*-rescore-*`). Slot F1 vs Lumetti, EN:
+  14B tune 0.815 / held-out 0.837; **32B tune 0.845 / held-out 0.848** (IT 0.830 / 0.836); type level
+  held-out 14B 0.938, 32B 0.948. Per report: **run-to-run (32B, temperature 0) 0.988**; **EN vs IT 0.885**
+  (lowest: ToothDevelopmentPathology 0.77, PathologicalLesion 0.70, PeriapicalLesion 0.80). Failed reports
+  32B: EN 4, IT 6 (14B EN 17); all normal length (generation loops), so they are a parser problem to fix.
+  (2) **Side geometry** (`results/audit/*-side-geometry`): with tooth labels mirrored, canal labels are on the
+  opposite side in 499/500 determinable P/F/S cases (sinus 47/51) → TF3 side labels (canal, sinus) follow
+  the same mirrored convention as the teeth; TF4 header left/right agrees with the reports (494/495). →
+  canal/sinus Left/Right swapped for P/F/S (`swap_side_centres = PFS`).
+  (3) **Empty-quadrant rule (review #4)**: jaw fully clear of lateral/posterior faces: mandible 414/527
+  (P 73.5 %, F 96.8 %, S 96.2 %), maxilla 224/228 → the stricter rule costs about a quarter of P mandibles
+  for toothless quadrants only; accepted.
+  (4) **Report-scan fingerprint** (`results/audit/*-report-scan-match`, 32B EN): median own contradiction
+  rate 0 in every centre; own scan best fit for 81-84 % of reports. No evidence of misfiled reports: the 16
+  reports of P116/P117/P260/P261 all fit their own scans (P260/P261: 10-14 agreeing items, ≤ 2
+  contradictions); P120/P121/P262/P263 exist only in TF3, so "same patient scanned twice" is untested.
+  30 misfiled flags are not misfiling: the largest come from **8 reports in which the parser marks a whole
+  arch (16 teeth) absent while the mask has ≥ 6 teeth there** (report prefixes 30, 29, 32; other reader of
+  the same case fits) → suspected parser over-firing of the "edentulous arch = 16 absent" convention;
+  to be checked by Shivam on the report text. 66 of 76 whole-arch absences agree with the mask (0-2 teeth).
+  (5) **Centre A segmentation v2, 3-case check** (job 615031): A003/A004/A005 have teeth in all four
+  quadrants (25/21/30 teeth; A005 has 41-48 incl. 47/48), canals 103-105 and pulp 199, no unexpected
+  labels → label fix works; ready for all 95.
+- **Parser v3 (2026-11-09), reviewed (subagent; must-fix applied).** Cause found with Shivam's reading of two
+  reports (no text recorded): the Italian abbreviation "e.d." (elemento dentario = tooth) survives in 33 EN
+  translations (224 IT reports use it, 111 "elemento/i dentari"); the parser read "e.d." as "edentulous" and
+  turned "teeth present from X to Y" into 16 ToothAbsence. In reports with "e.d.", 104/174 (60 %) of
+  ToothAbsence calls fall on mask-present teeth vs 264/3065 (9 %) elsewhere. v3: prompt defines
+  e.d./el./elemento dentario = tooth, presence statements give no finding, ranges across the midline run
+  through it, missing teeth without numbers → ToothAbsence with `region` (UpperArch/LowerArch/QuadrantI-IV,
+  slot "region:<R>"), absent-vs-present consistency instruction + per-report conflict count, new synthetic
+  example 5; retry ladder (penalty 1.1 → 1.3 → 1.05 with temperature 0.3, seed 0) for failed parses AND for
+  salvaged parses that dropped findings; region slots excluded at slot level vs Lumetti, kept at type level.
+  Post-run checks: full-edentulous arches still 16 teeth (not region), v2→v3 ToothAbsence change, conflicts,
+  share of reports ending on the sampled retry.
+- **Estimand for region-level mentions (Shivam, 2026-11-09): main = B, tooth-level completeness of the
+  reference** — a vague "partial edentulism" reader counts as not mentioning the unnamed teeth (plain n),
+  because corrected metrics compare findings tooth by tooth. **Secondary = A**, reporting propensity of
+  readers who name teeth (`--region-mode uninformative`: that reader drops out for the unnamed teeth; a tooth
+  the same report names with a presence-implying type stays informative). Both reported, with the share of
+  reader-tooth pairs affected.

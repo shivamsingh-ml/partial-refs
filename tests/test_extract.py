@@ -114,3 +114,45 @@ def test_per_report_level_sees_within_case_changes(tmp_path):
     assert score(o, r, "slot", cases).set_index("finding_type").loc["Caries", "f1"] == 1.0
     rep = score(o, r, "report_slot", reports).set_index("finding_type")
     assert (rep.loc["Caries", "tp"], rep.loc["Caries", "fn"]) == (1, 1) and rep["n_reports"].iloc[0] == 2
+
+
+def test_region_level_absence_and_conflicts():
+    from partialref.extract.ontology import absence_conflicts
+    r = Finding(finding_type="ToothAbsence", region="UpperArch")
+    assert r.slots() == ["region:UpperArch"]
+    assert Finding(finding_type="Caries", tooth_ids=["36"], region="LowerArch").region is None  # ignored off-type
+    with pytest.raises(ValueError):
+        Finding(finding_type="Caries")                                   # tooth type still needs teeth
+    both = Finding(finding_type="ToothAbsence", tooth_ids=["17"], region="QuadrantI")
+    assert both.slots() == ["17"]                                        # explicit teeth win over region
+    f = [Finding(finding_type="ToothAbsence", tooth_ids=["36", "37"]),
+         Finding(finding_type="ToothDevelopmentPathology", tooth_ids=["37"]),
+         Finding(finding_type="ProstheticDevice", tooth_ids=["36"])]     # pontic: not a conflict
+    assert absence_conflicts(f) == ["37"]
+
+
+def test_prompt_v3_rules_present():
+    for phrase in ('"e.d." NEVER means edentulous', "ARE PRESENT", "through it", '"region"'):
+        assert phrase in SYSTEM_PROMPT
+    ex = [o for _, o in FEWSHOT if any(f.get("region") for f in o["findings"])]
+    assert len(ex) == 1 and ReportExtraction.model_validate(ex[0])
+
+
+def test_score_excludes_region_slots_vs_lumetti(tmp_path):
+    d = tmp_path / "run"
+    d.mkdir()
+    pd.DataFrame([("P001", "a", None)], columns=["case_id", "report_id", "error"]).to_parquet(d / "extractions_en.parquet")
+    pd.DataFrame([("P001", "a", "en", "ToothAbsence", "region:UpperArch"), ("P001", "a", "en", "Caries", "36")],
+                 columns=["case_id", "report_id", "lang", "finding_type", "slot"]).to_parquet(d / "instances_en.parquet")
+    lum = tmp_path / "lum"
+    lum.mkdir()
+    pd.DataFrame([("P001", "Caries", "36"), ("P001", "ToothAbsence", "17")],
+                 columns=["case_id", "finding_type", "slot"]).to_parquet(lum / "instances.parquet")
+    pd.DataFrame({"case_id": ["P001"]}).to_parquet(lum / "cases.parquet")
+    from partialref.extract.score_parser import main as score_main
+    assert score_main(["--ours", str(d / "instances_en.parquet"), "--lumetti", str(lum / "instances.parquet"),
+                       "--results-dir", str(tmp_path / "res")]) == 0
+    out = next((tmp_path / "res" / "extract").iterdir())
+    res = pd.read_csv(out / "parser_vs_lumetti.csv").set_index(["level", "finding_type"])
+    assert res.loc[("type", "ToothAbsence"), "tp"] == 1                     # region counts at type level
+    assert (res.loc[("slot", "ToothAbsence"), "fp"], res.loc[("slot", "ToothAbsence"), "fn"]) == (0, 1)

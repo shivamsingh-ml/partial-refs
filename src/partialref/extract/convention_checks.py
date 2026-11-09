@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from partialref.extract.ontology import REGION_PREFIX
 from partialref.extract.score_parser import scoring_universe
 
 QUAD_DIGIT = {"QuadrantI": "1", "QuadrantII": "2", "QuadrantIII": "3", "QuadrantIV": "4"}
@@ -134,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     lf = lf[lf.case_id.isin(cases)]
     of = of[of.case_id.isin(cases)]
     oi = pd.read_parquet(a.run / f"instances_{a.lang}.parquet")
+    oi = oi[~oi["slot"].astype(str).str.startswith(REGION_PREFIX)]           # slot-level checks only
     li = pd.read_parquet(a.lumetti_dir / "instances.parquet")
     oi, li = oi[~oi.case_id.isin(a.exclude)], li[~li.case_id.isin(a.exclude)]
     res = {

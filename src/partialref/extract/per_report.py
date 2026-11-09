@@ -25,7 +25,8 @@ import pandas as pd
 from pydantic import ValidationError
 
 from partialref.extract.fewshot import messages
-from partialref.extract.ontology import FindingType, Finding, ReportExtraction, instances, json_schema, slot_kind
+from partialref.extract.ontology import (Finding, FindingType, ReportExtraction, absence_conflicts, instances,
+                                         json_schema, slot_kind)
 from partialref.provenance import make_run_id, write_provenance
 
 
@@ -36,11 +37,14 @@ def _post(url: str, body: dict, timeout: int = 300) -> dict:
         return json.loads(r.read())
 
 
-def request_body(model: str, report_text: str, mode: str, repetition_penalty: float | None = None) -> dict:
-    body = {"model": model, "messages": messages(report_text), "temperature": 0.0,
+def request_body(model: str, report_text: str, mode: str, repetition_penalty: float | None = None,
+                 temperature: float = 0.0, seed: int | None = None) -> dict:
+    body = {"model": model, "messages": messages(report_text), "temperature": temperature,
             "max_tokens": 4096, "chat_template_kwargs": {"enable_thinking": False}}
     if repetition_penalty:
         body["repetition_penalty"] = repetition_penalty   # vLLM sampling extra; used only on retry
+    if seed is not None:
+        body["seed"] = seed                                # reproducible sampling on the last retry
     schema = json_schema()
     if mode == "response_format":
         body["response_format"] = {"type": "json_schema",
@@ -48,6 +52,13 @@ def request_body(model: str, report_text: str, mode: str, repetition_penalty: fl
     else:  # vLLM's own spelling (installed 0.19: structured_outputs; 'guided_json' no longer exists)
         body["structured_outputs"] = {"json": schema}
     return body
+
+
+DEFAULT_LADDER = "1.1:0,1.3:0,1.05:0.3"
+
+
+def parse_ladder(spec: str) -> list[tuple[float, float]]:
+    return [(float(p), float(t)) for p, t in (x.split(":") for x in spec.split(",") if x.strip())]
 
 
 LEFT_QUADRANT_DIGITS = set("2367")          # FDI: 2 upper left, 3 lower left (+ primary 6, 7)
@@ -106,18 +117,20 @@ def parse_extraction(content: str) -> tuple[ReportExtraction, dict]:
         return ext, {"salvaged": True, "repaired_findings": repaired, "dropped_findings": dropped}
 
 
-def extract_one(server: str, model: str, text: str, mode: str,
-                repetition_penalty: float | None = None) -> tuple[ReportExtraction | None, dict]:
+def extract_one(server: str, model: str, text: str, mode: str, repetition_penalty: float | None = None,
+                temperature: float = 0.0, seed: int | None = None) -> tuple[ReportExtraction | None, dict]:
     t0 = time.time()
-    meta: dict = {"repetition_penalty": repetition_penalty}
+    meta: dict = {"repetition_penalty": repetition_penalty, "temperature": temperature, "seed": seed}
     try:
-        resp = _post(f"{server}/v1/chat/completions", request_body(model, text, mode, repetition_penalty))
+        resp = _post(f"{server}/v1/chat/completions",
+                     request_body(model, text, mode, repetition_penalty, temperature, seed))
         content = resp["choices"][0]["message"]["content"]
         meta.update(prompt_tokens=resp.get("usage", {}).get("prompt_tokens"),
                     completion_tokens=resp.get("usage", {}).get("completion_tokens"),
                     finish_reason=resp["choices"][0].get("finish_reason"))
         ext, info = parse_extraction(content)
         meta.update(info)
+        meta["absence_conflicts"] = len(absence_conflicts(ext.findings))
         meta["error"] = None
     except ValidationError as e:
         ext, meta["error"] = None, f"validation: {e.error_count()} errors"
@@ -163,8 +176,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--tag", default="parse")
     ap.add_argument("--retry-errors", action="store_true", help="re-parse reports whose stored result failed")
-    ap.add_argument("--retry-repetition-penalty", type=float, default=1.1,
-                    help="on a failed parse, retry once with this repetition penalty (0 = off)")
+    ap.add_argument("--retry-ladder", type=parse_ladder, default=parse_ladder(DEFAULT_LADDER),
+                    help="retries for a failed parse, in order, as penalty:temperature[,...] "
+                         f"(default {DEFAULT_LADDER}; temperature > 0 uses seed 0); '' = no retry")
     a = ap.parse_args(argv)
 
     reps = pd.read_parquet(a.manifest / "reports.parquet")
@@ -192,11 +206,27 @@ def main(argv: list[str] | None = None) -> int:
                 return prev["meta"]
         text = Path(row.path).read_text(encoding="utf-8", errors="replace")
         ext, meta = extract_one(a.server, a.model, text, mode)
-        if ext is None and a.retry_repetition_penalty:
-            # degenerate repetition loops (hit max_tokens on normal-length reports) -> one retry
-            ext, meta2 = extract_one(a.server, a.model, text, mode, a.retry_repetition_penalty)
-            meta2["first_attempt_error"] = meta.get("error")
-            meta = meta2
+        # failed parses are usually degenerate repetition loops on normal-length reports; a salvaged parse
+        # that had to DROP findings also counts as not OK (report_ok). Retry with stronger repetition
+        # penalties, last with a little seeded sampling; keep the first fully OK attempt, else the best one.
+        def fully_ok(e, m):
+            return e is not None and not m.get("dropped_findings")
+
+        def badness(e, m):
+            return (e is None, m.get("dropped_findings") or 0)
+
+        best, errors, n_try = (ext, meta), [], 1
+        for pen, temp in (a.retry_ladder if not fully_ok(ext, meta) else []):
+            errors.append(meta.get("error") or f"dropped_findings: {meta.get('dropped_findings')}")
+            ext, meta = extract_one(a.server, a.model, text, mode, pen, temp, 0 if temp > 0 else None)
+            n_try += 1
+            if badness(ext, meta) < badness(*best):
+                best = (ext, meta)
+            if fully_ok(ext, meta):
+                break
+        ext, meta = best
+        if errors:                                    # meta = kept attempt; problems of the tries before
+            meta.update(previous_errors=errors, first_attempt_error=errors[0], attempts_made=n_try)
         meta.update(case_id=row.case_id, report_id=row.report_id, lang=a.lang,
                     n_findings=len(ext.findings) if ext else None)
         tmp = dst.with_suffix(".json.tmp")           # atomic: a killed job never leaves a partial file
@@ -230,6 +260,12 @@ def main(argv: list[str] | None = None) -> int:
                "n_salvaged": int(meta_df.get("salvaged", pd.Series(dtype=object)).fillna(False).astype(bool).sum()),
                "n_dropped_findings": int(pd.to_numeric(meta_df.get("dropped_findings", pd.Series(dtype=float)),
                                                        errors="coerce").fillna(0).sum()),
+               "n_reports_with_absence_conflicts": int((pd.to_numeric(meta_df.get(
+                   "absence_conflicts", pd.Series(dtype=float)), errors="coerce").fillna(0) > 0).sum()),
+               "retry_settings_used": pd.Series([
+                   f"{p}:{t}" for p, t, e in zip(meta_df.get("repetition_penalty", [None] * len(meta_df)),
+                                                 meta_df.get("temperature", [0.0] * len(meta_df)), meta_df["error"])
+                   if pd.notna(p) and p and pd.isna(e)], dtype=object).value_counts().to_dict(),
                "errors": meta_df["error"].value_counts().to_dict(),
                "n_instances": len(rows_inst), "median_seconds": float(meta_df["seconds"].median()),
                "finish_reasons": meta_df.get("finish_reason", pd.Series(dtype=str)).value_counts().to_dict()}

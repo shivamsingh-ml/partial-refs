@@ -31,6 +31,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from partialref.extract.ontology import REGION_PREFIX
 from partialref.propensity.agreement import load_visibility, select_reports
 from partialref.propensity.laterality import residual_check, swap_check
 from partialref.provenance import make_run_id, write_provenance
@@ -65,7 +66,8 @@ def candidate_items(m: pd.DataFrame, reports_by_case: dict, vis_mirror: dict,
     if lumetti is not None:
         lum = lumetti[["case_id", "finding_type", "slot"]].drop_duplicates().assign(_in=True)
         x = m.merge(lum, on=["case_id", "finding_type", "slot"], how="left")
-        x = x[x["case_id"].isin(set(lumetti["case_id"])) & x["_in"].isna()]   # only cases Lumetti labelled
+        x = x[x["case_id"].isin(set(lumetti["case_id"])) & x["_in"].isna()   # only cases Lumetti labelled
+              & ~x["slot"].astype(str).str.startswith(REGION_PREFIX)]            # Lumetti has no region slots
         rows += [{**r, "reason": "not_in_lumetti", "pair_id": None} for r in x[KEY].to_dict("records")]
     return pd.DataFrame(rows, columns=KEY + ["reason", "pair_id"])
 

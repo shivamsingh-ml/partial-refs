@@ -44,7 +44,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from partialref.extract.ontology import FindingType, slot_kind
+from partialref.extract.ontology import REGION_PREFIX, REGION_TEETH, TOOTH_PRESENT_TYPES, FindingType, slot_kind
 from partialref.extract.per_report import report_ok
 from partialref.propensity.closed_form import closed_form_n2
 from partialref.propensity.mle import fit_mle
@@ -71,7 +71,7 @@ def load_visibility(vis_dirs: list[Path], mirror_centres: str = "", swap_side_ce
     side structures. Cases of ``mirror_centres`` get left/right FDI quadrants of the mask teeth swapped
     (1<->2, 3<->4): TF3 tooth labels are mirrored relative to the reports (DECISIONS 2026-11-08/09).
     Cases of ``swap_side_centres`` get canal/sinus Left<->Right swapped (set from partialref.audit.side_geometry;
-    default none until that check has run). Condyles use one value for both sides, so no swap is needed."""
+    the CLI default is PFS, DECISIONS 2026-11-09). Condyles use one value for both sides, so no swap is needed."""
     out: dict[str, dict] = {}
     for d in vis_dirs:
         cf = pd.read_parquet(d / "case_features.parquet")
@@ -160,16 +160,36 @@ def candidate_slots(ftype: str) -> list[str]:
 
 # ---------------------------------------------------------------- instances
 def build_instances(reports: pd.DataFrame, mentions: pd.DataFrame, vis: dict[str, dict],
-                    failed_reports: set[tuple[str, str]], types: list[str]) -> tuple[pd.DataFrame, dict]:
+                    failed_reports: set[tuple[str, str]], types: list[str],
+                    region_mode: str = "omission") -> tuple[pd.DataFrame, dict]:
     """reports: case_id, report_id (all EN reports of the selected cases).
     mentions: case_id, report_id, finding_type, slot (parser output)."""
     bad_cases = {c for c, _ in failed_reports}
     no_vis = set(reports["case_id"]) - set(vis.keys())
     rep = reports[~reports["case_id"].isin(bad_cases) & reports["case_id"].isin(vis.keys())]
     n_by_case = rep.groupby("case_id")["report_id"].nunique().to_dict()
-    m = mentions.merge(rep[["case_id", "report_id"]], on=["case_id", "report_id"])
-    k_counts = m.drop_duplicates(["case_id", "report_id", "finding_type", "slot"]) \
-        .groupby(["case_id", "finding_type", "slot"]).size().to_dict()
+    m = mentions.merge(rep[["case_id", "report_id"]], on=["case_id", "report_id"]) \
+        .drop_duplicates(["case_id", "report_id", "finding_type", "slot"])
+    k_counts = m.groupby(["case_id", "finding_type", "slot"]).size().to_dict()
+    # region-level mentions (parser v3, e.g. "partial edentulism of the upper arch"): for each tooth of the
+    # region that this report does not name, the reader is uninformative (neither mention nor omission)
+    # -> that instance's n drops by one for this reader instead of recording a false omission.
+    # region_mode (decided by Shivam 2026-11-09): "omission" = MAIN analysis (B): the estimand is tooth-level
+    # completeness of the reference, so a vague reader does not have that tooth -> plain n. "uninformative" =
+    # secondary (A): reporting propensity of readers who name teeth; the vague reader drops out for that tooth.
+    named = set(map(tuple, m[["case_id", "report_id", "finding_type", "slot"]].to_numpy()))
+    # a tooth named with a type that implies it is present: that reader is informative ("not missing")
+    named_present = set(map(tuple, m.loc[m["finding_type"].isin(TOOTH_PRESENT_TYPES),
+                                         ["case_id", "report_id", "slot"]].to_numpy()))
+    is_region = m["slot"].astype(str).str.startswith(REGION_PREFIX)
+    uninformative = set() if region_mode == "omission" else {
+        (c, r, t, tooth) for c, r, t, sl in m.loc[is_region, ["case_id", "report_id", "finding_type",
+                                                              "slot"]].itertuples(index=False)
+        for tooth in REGION_TEETH.get(sl[len(REGION_PREFIX):], [])
+        if (c, r, t, tooth) not in named and (c, r, tooth) not in named_present}
+    n_uninf: dict = defaultdict(int)
+    for c, _, t, tooth in uninformative:
+        n_uninf[(c, t, tooth)] += 1
     rows, invisible_mentions = [], defaultdict(int)
     for (c, t, s), k in k_counts.items():
         if t in types and s in set(candidate_slots(t)) and not is_visible(vis[c], t, s):
@@ -178,15 +198,20 @@ def build_instances(reports: pd.DataFrame, mentions: pd.DataFrame, vis: dict[str
         v = vis[c]
         for t in types:
             for s in candidate_slots(t):
-                if is_visible(v, t, s):
-                    rows.append((c, c[0], t, s, n, k_counts.get((c, t, s), 0)))
+                n_eff = n - n_uninf.get((c, t, s), 0)
+                if n_eff >= 1 and is_visible(v, t, s):
+                    rows.append((c, c[0], t, s, n_eff, k_counts.get((c, t, s), 0)))
     inst = pd.DataFrame(rows, columns=["case_id", "centre", "finding_type", "slot", "n", "k"])
     info = {"cases_used": int(inst["case_id"].nunique()) if len(inst) else 0,
             "cases_without_visible_instances": len(n_by_case) - (int(inst["case_id"].nunique()) if len(inst) else 0),
             "cases_dropped_failed_parse": len(bad_cases & set(reports.case_id)),
             "cases_dropped_no_visibility_features": len(no_vis - bad_cases),
             "mentions_on_invisible_slots": dict(invisible_mentions),
-            "mentions_total": {t: int(m[m.finding_type == t].shape[0]) for t in types}}
+            "region_mentions": int(is_region.sum()),
+            "reader_slot_pairs_uninformative_by_region": len(uninformative),
+            "mentions_total": {t: int(m[m.finding_type == t].shape[0]) for t in types},
+            "mentions_total_region_level": m.loc[is_region, "finding_type"].value_counts().to_dict(),
+            "region_mode": region_mode}
     return inst, info
 
 
@@ -272,8 +297,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="default: 4 cases with likely misfiled reports + S0015 (possibly upside down)")
     ap.add_argument("--mirror-centres", default="PFS",
                     help="centres whose mask tooth IDs are mirrored L/R (TF3 convention, DECISIONS); '' = none")
-    ap.add_argument("--swap-side-centres", default="",
-                    help="centres whose canal/sinus Left/Right labels are swapped (from audit.side_geometry)")
+    ap.add_argument("--swap-side-centres", default="PFS",
+                    help="centres whose canal/sinus Left/Right labels are swapped: TF3 side labels follow the "
+                         "mirrored tooth convention (side_geometry 499/500, DECISIONS 2026-11-09); '' = none")
+    ap.add_argument("--region-mode", choices=["omission", "uninformative"], default="omission",
+                    help="region-level mentions without tooth numbers: counted as omitting the unnamed teeth (main, "
+                         "tooth-level reference completeness) or reader uninformative for them (secondary)")
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--by-centre", action="store_true")
@@ -287,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
     mentions = pd.read_parquet(a.parse_run / f"instances_{a.lang}.parquet")
     vis = load_visibility(a.vis, mirror_centres=a.mirror_centres, swap_side_centres=a.swap_side_centres)
     types = [t.value for t in FindingType]
-    inst, info = build_instances(reps, mentions, vis, bad_reports, types)
+    inst, info = build_instances(reps, mentions, vis, bad_reports, types, region_mode=a.region_mode)
 
     rows = []
     multi = inst[inst["n"] >= 2]

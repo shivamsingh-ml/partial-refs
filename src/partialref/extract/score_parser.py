@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from partialref.extract.ontology import REGION_PREFIX
 from partialref.extract.per_report import report_ok
 from partialref.provenance import make_run_id, write_provenance
 
@@ -140,8 +141,10 @@ def main(argv: list[str] | None = None) -> int:
     cases, reports, info = scoring_universe(a.ours, a.lumetti, a.ref_parse, a.exclude, a.half)
     if a.lumetti is not None:
         ref_inst = pd.read_parquet(a.lumetti)
+        # region-level mentions (no tooth numbers) count at type level only; Lumetti has no such slots
+        ours_slots = ours[~ours["slot"].astype(str).str.startswith(REGION_PREFIX)]
         res = pd.concat([score(ours, lumetti_types(a.lumetti), "type", cases),
-                         score(ours, ref_inst, "slot", cases)], ignore_index=True)
+                         score(ours_slots, ref_inst, "slot", cases)], ignore_index=True)
         headline = "slot"
     else:
         ref_inst = pd.read_parquet(a.ref_parse)

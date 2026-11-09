@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from partialref.extract.ontology import REGION_PREFIX
 from partialref.extract.score_parser import scoring_universe
 from partialref.provenance import make_run_id, write_provenance
 
@@ -81,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     ours = pd.read_parquet(a.run / f"instances_{a.lang}.parquet")
     ref = pd.read_parquet(a.lumetti)
     cases, _, _ = scoring_universe(a.run / f"instances_{a.lang}.parquet", lumetti=a.lumetti, exclude=a.exclude)
-    d = diagnose(ours, ref, cases)
+    d = diagnose(ours[~ours["slot"].astype(str).str.startswith(REGION_PREFIX)], ref, cases)   # slot level
 
     # condyle findings outside A vs our not_assessable statements for the same reports
     na = pd.read_parquet(a.run / f"not_assessable_{a.lang}.parquet")

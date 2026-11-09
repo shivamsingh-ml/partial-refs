@@ -5,6 +5,10 @@ Re-implemented in our own code following the finding ontology of Lumetti et al. 
 cited, files not copied: the repository states no licence). Additions of ours:
 - ``not_assessable``: statements that a structure is not visible / not evaluable in the scan
   (needed for visibility, HANDOFF §2.6); they are not findings.
+- ``region`` on ToothAbsence (parser v3, 2026-11-09): missing teeth stated WITHOUT tooth numbers
+  ("partial edentulism of the upper arch"). Its slot is "region:<Region>"; it counts at type level. In the
+  propensity model (main analysis) the unnamed teeth of the region count as not mentioned (tooth-level
+  completeness of the reference); secondary analysis: that reader is uninformative for them.
 Negative statements ("no caries") produce no finding, as in the original ontology.
 
 Each finding has exactly one type and is anchored to a *slot*: FDI tooth ids, a side, or a
@@ -110,6 +114,15 @@ Qualifiers = create_model(
 )
 
 FDIStr = Annotated[str, StringConstraints(pattern=FDI_RE.pattern)]
+Region = Literal["UpperArch", "LowerArch", "QuadrantI", "QuadrantII", "QuadrantIII", "QuadrantIV"]
+REGION_PREFIX = "region:"
+_PERM = {q: [f"{q}{i}" for i in range(1, 9)] for q in "1234"}
+REGION_TEETH: dict[str, list[str]] = {
+    "UpperArch": _PERM["1"] + _PERM["2"], "LowerArch": _PERM["3"] + _PERM["4"],
+    "QuadrantI": _PERM["1"], "QuadrantII": _PERM["2"], "QuadrantIII": _PERM["3"], "QuadrantIV": _PERM["4"]}
+# types that imply the tooth is present: a ToothAbsence on the same tooth in the same report is a conflict
+TOOTH_PRESENT_TYPES = {"Caries", "EndodonticTreatment", "ConservativeRestoration", "ToothDevelopmentPathology",
+                       "PeriapicalLesion", "RootResidue"}
 
 
 class Finding(BaseModel):
@@ -118,6 +131,7 @@ class Finding(BaseModel):
     tooth_ids: list[FDIStr] = Field(default_factory=list)
     side: Side | None = None
     quadrant: Quadrant | None = None
+    region: Region | None = None
     qualifiers: Qualifiers = Field(default_factory=Qualifiers)  # type: ignore[valid-type]
 
     @field_validator("tooth_ids")
@@ -131,7 +145,10 @@ class Finding(BaseModel):
     @model_validator(mode="after")
     def _slot(self) -> Finding:
         kind = slot_kind(self.finding_type)
-        if kind == "tooth" and not self.tooth_ids:
+        if self.finding_type != FindingType.ToothAbsence and self.region is not None:
+            self.region = None                 # region is only meaningful for ToothAbsence
+        if kind == "tooth" and not self.tooth_ids and not (
+                self.finding_type == FindingType.ToothAbsence and self.region is not None):
             raise ValueError(f"{self.finding_type.value} needs tooth_ids")
         if kind == "side" and self.side is None:
             raise ValueError(f"{self.finding_type.value} needs side")
@@ -143,7 +160,7 @@ class Finding(BaseModel):
         """Scoring slots: one per tooth (tooth types), else the side / quadrant."""
         kind = slot_kind(self.finding_type)
         if kind == "tooth":
-            return list(self.tooth_ids)
+            return list(self.tooth_ids) if self.tooth_ids else [REGION_PREFIX + self.region]
         return [self.side] if kind == "side" else [self.quadrant]
 
 
@@ -157,6 +174,13 @@ class ReportExtraction(BaseModel):
 def instances(case_id: str, findings: list[Finding]) -> list[tuple[str, str, str]]:
     """(case, type, slot) instances, de-duplicated."""
     return sorted({(case_id, f.finding_type.value, s) for f in findings for s in f.slots()})
+
+
+def absence_conflicts(findings: list[Finding]) -> list[str]:
+    """Teeth that one report calls absent AND gives a finding implying the tooth is present."""
+    absent = {t for f in findings if f.finding_type == FindingType.ToothAbsence for t in f.tooth_ids}
+    present = {t for f in findings if f.finding_type.value in TOOTH_PRESENT_TYPES for t in f.tooth_ids}
+    return sorted(absent & present)
 
 
 def json_schema() -> dict:

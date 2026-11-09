@@ -149,3 +149,83 @@ def test_report_ok_treats_dropped_findings_as_failed():
                          "dropped_findings": [None, 0, None, 2]})
     assert per_report.report_ok(meta).tolist() == [True, True, False, False]
     assert per_report.report_ok(meta.drop(columns="dropped_findings")).tolist() == [True, True, False, True]
+
+
+class StubbornLoopVLLM(FakeVLLM):
+    """Loops at temperature 0 whatever the penalty; only seeded sampling (temperature > 0) succeeds."""
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        FakeVLLM.seen.append(body)
+        probe = "Implant in position 36" in body["messages"][-1]["content"]    # mode probe at startup
+        ok = probe or (body.get("temperature", 0) > 0 and body.get("seed") == 0)
+        content = json.dumps(ANSWER) if ok else '{"findings": [{"finding_type": "Caries"'
+        data = json.dumps({"choices": [{"message": {"content": content}, "finish_reason": "stop" if ok else "length"}],
+                           "usage": {"prompt_tokens": 10, "completion_tokens": 4096}}).encode()
+        self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+
+
+def test_retry_ladder_reaches_seeded_sampling(tmp_path):
+    srv = HTTPServer(("127.0.0.1", 0), StubbornLoopVLLM)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_address[1]}"
+    man = tmp_path / "manifest"
+    man.mkdir()
+    p = tmp_path / "data" / "P001" / "reports_en" / "cbct_21_100.txt"
+    p.parent.mkdir(parents=True)
+    p.write_text("synthetic placeholder text")
+    pd.DataFrame([{"case_id": "P001", "lang": "en", "report_id": "21_100", "path": str(p)}]).to_parquet(
+        man / "reports.parquet")
+    out = tmp_path / "run"
+    try:
+        assert per_report.main(["--manifest", str(man), "--lang", "en", "--server", url, "--model", "fake",
+                                "--out-dir", str(out), "--workers", "1"]) == 0
+    finally:
+        srv.shutdown()
+    d = json.loads((out / "per_report" / "P001__21_100__en.json").read_text())
+    assert d["extraction"] is not None
+    m = d["meta"]
+    assert m["attempts_made"] == 4 and m["temperature"] == 0.3 and m["seed"] == 0 and len(m["previous_errors"]) == 3
+    assert m["absence_conflicts"] == 0
+    s = json.loads((out / "summary_en.json").read_text())
+    assert s["n_errors"] == 0 and s["retry_settings_used"] == {"1.05:0.3": 1}
+    assert per_report.parse_ladder("1.1:0,1.3:0") == [(1.1, 0.0), (1.3, 0.0)] and per_report.parse_ladder("") == []
+
+
+class DropThenCleanVLLM(FakeVLLM):
+    """First answer is schema-valid but has an unanchorable finding (salvage drops it); retry is clean."""
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        FakeVLLM.seen.append(body)
+        dirty = {"findings": ANSWER["findings"] + [{"finding_type": "ToothAbsence", "tooth_ids": []}],
+                 "not_assessable": []}
+        content = json.dumps(ANSWER if body.get("repetition_penalty") else dirty)
+        data = json.dumps({"choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+                           "usage": {"prompt_tokens": 10, "completion_tokens": 50}}).encode()
+        self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+
+
+def test_salvage_with_dropped_findings_is_retried(tmp_path):
+    """Review v3: a parse that lost findings in salvage is not OK for T2 -> it must be retried."""
+    srv = HTTPServer(("127.0.0.1", 0), DropThenCleanVLLM)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_address[1]}"
+    man = tmp_path / "manifest"
+    man.mkdir()
+    p = tmp_path / "data" / "P001" / "reports_en" / "cbct_21_100.txt"
+    p.parent.mkdir(parents=True)
+    p.write_text("synthetic placeholder text")
+    pd.DataFrame([{"case_id": "P001", "lang": "en", "report_id": "21_100", "path": str(p)}]).to_parquet(
+        man / "reports.parquet")
+    out = tmp_path / "run"
+    try:
+        per_report.main(["--manifest", str(man), "--lang", "en", "--server", url, "--model", "fake",
+                         "--out-dir", str(out), "--workers", "1"])
+    finally:
+        srv.shutdown()
+    m = json.loads((out / "per_report" / "P001__21_100__en.json").read_text())["meta"]
+    assert m["attempts_made"] == 2 and m["first_attempt_error"] == "dropped_findings: 1"
+    assert not m.get("dropped_findings") and m["repetition_penalty"] == 1.1
+    meta = pd.read_parquet(out / "extractions_en.parquet")
+    assert per_report.report_ok(meta).all()

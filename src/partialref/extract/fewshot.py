@@ -7,7 +7,9 @@ committed). Their expected outputs follow partialref.extract.ontology.
 Attribution: the finding types, anchors, qualifier values and several definitions used in the prompt
 follow the finding ontology of Lumetti et al. (MICCAI 2026, "Ontology-Grounded Structured Prediction for
 Dental CBCT Reporting"); the coding conventions (bridges, tooth-level periodontal defects, edentulous
-arches) were measured from their released labels. Their repository states no licence: none of their
+arches) were measured from their released labels. v3 (2026-11-09): tooth abbreviations ("e.d."), presence
+statements, ranges through the midline, region-level missing teeth, absence/presence conflicts — all from
+our own error analysis (counts only), example 5 written from scratch. Their repository states no licence: none of their
 files (code, prompts, examples) were opened or copied; this prompt and its examples are our own.
 """
 
@@ -21,10 +23,14 @@ SYSTEM_PROMPT = f"""You convert ONE dental CBCT radiology report into structured
 Return only JSON that matches the given schema: {{"findings": [...], "not_assessable": [...]}}.
 
 Finding types (choose exactly one per finding) and their anchor:
-- ToothAbsence (tooth_ids): tooth missing (extracted, agenesis), including pontic positions of a bridge.
-  A FULLY EDENTULOUS arch = ToothAbsence for all 16 teeth of that arch (11-18 and 21-28, or 31-38 and
-  41-48). NOT for impacted/unerupted teeth (ToothDevelopmentPathology), NOT where a root residue
-  remains (RootResidue), and NEVER for teeth or arches that are not visible / not included in the scan.
+- ToothAbsence (tooth_ids, or region): a tooth the report says is MISSING (absent, missing, extracted,
+  lost, agenesis, edentulous / edentulism of that tooth or area), including pontic positions of a bridge.
+  A FULLY EDENTULOUS arch (the report says the arch has no teeth at all) = ToothAbsence for all 16 teeth
+  of that arch (11-18 and 21-28, or 31-38 and 41-48). Missing teeth stated WITHOUT tooth numbers
+  ("partial edentulism of the upper arch", "edentulous gaps in the lower left quadrant") = ONE
+  ToothAbsence with "region" (UpperArch, LowerArch, QuadrantI-IV) and NO tooth_ids; never guess numbers.
+  NOT for impacted/unerupted teeth (ToothDevelopmentPathology), NOT where a root residue remains
+  (RootResidue), and NEVER for teeth or arches that are not visible / not included in the scan.
 - ToothDevelopmentPathology (tooth_ids): (a) impacted, semi-included, unerupted, ectopic,
   supernumerary, retained primary teeth, incomplete root formation (eruption_status, bone_inclusion,
   tooth_orientation, development_feature); (b) TOOTH-SPECIFIC periodontal defects: vertical bone
@@ -55,7 +61,14 @@ Finding types (choose exactly one per finding) and their anchor:
 
 Rules:
 - Teeth use FDI two-digit numbers: permanent 11-48, primary 51-85. Expand ranges: "from 14 to 16"
-  -> 14, 15, 16.
+  -> 14, 15, 16; a range across the midline runs through it: "from 33 to 43" -> 33, 32, 31, 41, 42, 43.
+- "e.d.", "el.", "elemento dentario", "elementi dentari" (Italian, sometimes left untranslated) mean
+  TOOTH / TEETH. "e.d." NEVER means edentulous.
+- Statements that teeth ARE PRESENT ("teeth present from 37 to 47", "complete dentition") produce NO
+  finding.
+- A tooth called missing cannot also have caries, a restoration, a root canal treatment, a periapical
+  lesion, a root residue or a development pathology in the same report: if both seem to apply, re-read
+  the report; list the tooth as missing only if the report explicitly says so.
 - One finding per type and anchor; several teeth with the same finding may share one finding.
 - Negative or normal statements ("no caries", "regular condyles") produce NO finding.
 - Statements that a structure is not visible / not assessable / outside the field of view go to
@@ -146,6 +159,22 @@ FEWSHOT = [
             {"finding_type": "MandibularCanalCourse", "side": "Right", "tooth_ids": ["45", "46"],
              "qualifiers": {"canal_trajectory": ["Superficialized"]}}],
          "not_assessable": []},
+    ),
+    (
+        "Lower jaw: e.d. present from 37 to 47. E.d. 38 semi-included in bone and mesioangulated, with "
+        "incomplete root formation; e.d. 48 absent. Occlusal composite restoration on e.d. 46. Upper jaw: "
+        "partially edentulous posterior sectors, missing elements not specified; e.d. 22 with a root canal "
+        "filling short of the apex. Condyles not included in the scan.",
+        {"findings": [
+            {"finding_type": "ToothDevelopmentPathology", "tooth_ids": ["38"],
+             "qualifiers": {"bone_inclusion": ["SemiInclusion"], "tooth_orientation": ["Mesioangulated"],
+                            "development_feature": ["IncompleteRootFormation"]}},
+            {"finding_type": "ToothAbsence", "tooth_ids": ["48"]},
+            {"finding_type": "ConservativeRestoration", "tooth_ids": ["46"]},
+            {"finding_type": "ToothAbsence", "region": "UpperArch"},
+            {"finding_type": "EndodonticTreatment", "tooth_ids": ["22"],
+             "qualifiers": {"treatment_quality": ["DoesNotReachApex"]}}],
+         "not_assessable": ["condyle_left", "condyle_right"]},
     ),
 ]
 
