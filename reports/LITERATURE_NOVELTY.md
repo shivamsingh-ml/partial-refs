@@ -17,6 +17,29 @@ propensity-scored metrics for missing labels exist in recommender systems, searc
 positive-unlabeled (PU) learning. Our contribution is therefore best framed as a **principled transfer** with
 genuinely new elements (§4), positioned explicitly against EviDent-CBCT and PU-DPO.
 
+## 1b. Our own prior work: the V2V2R challenge paper
+
+Singh, Lu (equal contribution), Sagl, "From Voxels to Views to Reports: A Segmentation-Guided VLM Pipeline for
+CBCT Report Generation", MICCAI 2026 satellite (ODIN challenges 024), with supplement; code
+github.com/CC-AIDent-Vienna/v2v2R. Already published there, so not new in any follow-up:
+- masks as a spatial index (3D renders, panoramic, per-tooth and per-sinus key-slice composites); schema VQA with a
+  visual-evidence field; Qwen3.5-VL-9B LoRA; field-of-view statements in prompt captions and constraint rules
+  (no sinus answers when the maxilla is outside the scan, no caries on absent teeth);
+- **silence rules**: fields with validation precision < 0.30 against the (incomplete) references are switched off
+  (crowns, caries, post-and-core, root remnants);
+- union-of-reports structured ground truth (Qwen3-14B parser); hidden test RadFact P 0.534 / R 0.332 / F1 0.392;
+- supplement Table S3: inter-reader agreement per finding on 367 multi-report cases, and the discussion already
+  attributes low agreement for crowns, fillings and caries to reporting habits and missed findings ("label noise").
+
+Consequences for partial-refs: (1) the storyline continues the challenge paper — the qualitative observation is
+quantified (π, visibility-conditioned) and corrected; (2) Table S3 implies two-reader π of about endodontic 0.94,
+implant 0.92, impaction 0.90, absent teeth 0.76, root remnant 0.65, crowns 0.59, fillings 0.46, caries 0.37
+(our arithmetic from its counts). The counts and the Jaccard column suggest **case-level** counting ("finding
+mentioned anywhere in the case"; inferred, not documented in the submitted code — confirm with Chen), which explains
+higher values than our tooth-level, visibility-conditioned π; comparing the two is itself a result; (3) **the
+silence rules were tuned to raw precision against incomplete references** — whether switching those findings off
+still helps under corrected metrics is a direct, concrete test of the paper's claim (HANDOFF L14).
+
 ## 2. Closest prior work (ranked)
 
 | # | Work | What they did | Overlap | What it means for us |

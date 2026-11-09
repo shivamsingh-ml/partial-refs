@@ -496,3 +496,11 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   freeze (`reports/ANALYSIS_PLAN.md`) before final runs. M4–M6 kept as planned.
 - **T1 failure rule made concrete (Shivam, 2026-11-09):** T1 fails if a systematic error pattern appears or if
   fewer than 3 finding types survive parser correction with upper 95 % CI of π < 0.90 (same count as T2's guidance).
+- **V2V2R challenge paper read (2026-11-09; Singh, Lu, Sagl, ODIN 2026 challenges 024 + supplement).** Already
+  published: masks as spatial index, FOV statements in prompts and constraint rules, silence rules (fields with
+  precision < 0.30 off: crowns, caries, post-and-core, root remnants), union-of-reports ground truth, Table S3
+  inter-reader agreement. Its discussion already names reporting habits / missed findings as label noise → our
+  project quantifies and corrects that. Table S3 implies case-level two-reader π (endodontic ≈ 0.94 … caries ≈ 0.37;
+  case-level counting inferred from the numbers, script not in the submitted code → confirm with Chen). Added
+  HANDOFF L14: re-test the silence rules under corrected metrics; compare our tooth-level π with Table S3.
+  `reports/LITERATURE_NOVELTY.md` §1b added.

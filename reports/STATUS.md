@@ -1,6 +1,20 @@
 # STATUS — where we stopped
 
-## Update Mon 9 Nov 2026, early morning (latest — read this first)
+## Update Mon 9 Nov 2026, evening (latest — read this first)
+- Parser v3 (job 615200) queued, expected start ~22:04. Tomorrow: v3 scores + post-run checks → freeze;
+  fix the two small parser items (retry-errors re-parses reports with dropped findings; previous_errors
+  bookkeeping); T2 (estimand B main, A secondary); review bundle for Shivam; start T3.
+- Decided today: T1 judged by Shivam's blinded review + parser-error-corrected π (fail if < 3 types survive);
+  Lumetti agreement internal only; staged human review; review app (cluster + local bundle); literature check
+  (`reports/LITERATURE_NOVELTY.md`) and L1–L13 in HANDOFF §7; analysis-plan freeze before final runs.
+- **To decide tomorrow:** (1) split design — proposal: internal locked test ~20 % of P/F/S (stratified by
+  centre, single/double-read, FOV class; P116/P117/P260/P261 and S0015 never in test), centre A = pure
+  external test (π transferred, predicted masks only), dev/val split for VLM variants, 5-fold only for cheap
+  parts; 20 % vs 25 %. (2) After the GT numbers: paper shape — standalone evaluation paper vs combined MedIA
+  paper (artifact "Grounded CBCT Reporting Paper", https://claude.ai/artifact/Xfb6fwsJ4b1nVuikPsFz3c);
+  agree M4/M6 scope with Chen first.
+
+## Update Mon 9 Nov 2026, early morning
 - T2 done on the 14B parse (provisional): π canal 0.88, endo 0.83, implant 0.68, restoration 0.51, caries 0.26
   (double-read, mirrored masks). **TF3 tooth masks are L/R mirrored vs report FDI numbers** (214 vs 13 cases);
   clinician side swaps are at chance level. V2V2R's own segmentation already corrects L/R (segmentation.py).

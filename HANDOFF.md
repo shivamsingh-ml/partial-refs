@@ -448,7 +448,7 @@ reference incompleteness, with V2V2R improvements as the second pillar. Report: 
 
 ### Additions from the literature check (2026-11-09; `reports/LITERATURE_NOVELTY.md`)
 
-Small refinements inside existing milestones, not new studies. Closest prior work to position against:
+Small refinements inside existing milestones, not new studies. Our own prior work: the V2V2R challenge paper (ODIN 2026; masks as spatial index, FOV in prompts, silence rules, Table S3 inter-reader agreement) — follow-ups must state a delta beyond it. Closest prior work to position against:
 EviDent-CBCT (arXiv 2610.02375; hand-set non-mention weights for *training* on ToothFairy4, no evaluation
 correction) and PU-DPO (arXiv 2608.05341; CXR omission noise, union-of-readers truth, *training* only).
 
@@ -467,6 +467,7 @@ correction) and PU-DPO (arXiv 2608.05341; CXR omission noise, union-of-readers t
 | L11 | *Optional, if data obtainable:* do corrected metrics agree better with the ODIN 2026 clinician Arena ranking than raw metrics? | M3 |
 | L12 | Second domain: REFLACX (multi-read free text) + VinDr-CXR; stability of corrected metrics under reference rewrites (Jeong et al., MIMIC-CXR-Ext-ReRef) | M5 |
 | L13 | Lumetti ontology/metric names, per-centre results (A = Sfax), FDI-level evaluation, GPT-5.2 translation noise acknowledged | writing |
+| L14 | Re-test V2V2R's published **silence rules** (fields with precision < 0.30 against incomplete references switched off: crowns, caries, post-and-core, root remnants) under corrected metrics — would the challenge system be better with them on? Also compare our π with the case-level agreement of the V2V2R paper's Table S3 | T4, M3 |
 
 **Analysis-plan freeze:** before the final (paper) runs of M1–M3, the analysis plan — visibility thresholds,
 estimand (B main / A secondary), exclusions, corrected-metric estimator, sensitivity analyses — is written to
