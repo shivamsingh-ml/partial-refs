@@ -440,11 +440,38 @@ Few-shot examples for the parser are synthetic (written by Claude, no real repor
 | T3 Mask agreement | Tier-1 findings (missing teeth, implants, crowns/bridges): π from two readers vs π measured against TF3 masks; false-mention rate φ vs masks | CIs overlap for ≥ 2 of 3 types and φ ≤ 0.05 |
 | T4 Effect size | Plug estimated (p, π) into a simulated scoring of realistic systems (a conservative and a complete one) | corrected − raw precision ≥ 5 points for common types, and/or the ranking of the two systems flips |
 
-Decision rules: all pass → continue with M0.5/M1/M2/M3 as planned. **T1 fails** (a systematic error pattern, or too few types survive parser correction) → fix the parser first
+Decision rules: all pass → continue with M0.5/M1/M2/M3 as planned. **T1 fails** (a systematic error pattern, or **fewer than 3 finding types** survive parser correction with upper 95 % CI of π < 0.90) → fix the parser first
 (nothing else is interpretable). **T3 fails** → disagreement is not mainly omission: switch to a
 false-positive-aware model (φ from masks / 3-report cases) and partial-identification bounds (§12.5 D).
 **T2 or T4 fails** (π ≈ 1 or tiny effect) → pivot to a measurement/benchmark-analysis paper on
 reference incompleteness, with V2V2R improvements as the second pillar. Report: `reports/REPORT_GT.md`.
+
+### Additions from the literature check (2026-11-09; `reports/LITERATURE_NOVELTY.md`)
+
+Small refinements inside existing milestones, not new studies. Closest prior work to position against:
+EviDent-CBCT (arXiv 2610.02375; hand-set non-mention weights for *training* on ToothFairy4, no evaluation
+correction) and PU-DPO (arXiv 2608.05341; CXR omission noise, union-of-readers truth, *training* only).
+
+| # | Addition | Milestone |
+| --- | --- | --- |
+| L1 | Corrected precision: two estimators — the §2.2 formula (credits each unmatched prediction with P(present \| 0 of n mention), exact only for a model without skill) and a PU-style estimator (model recall on mentioned slots × P(present \| unmentioned) × unmentioned slots); choose the main one on simulation + mask evidence, the other as sensitivity | M0.5, M2 |
+| L2 | *Optional:* φ across centres with different prevalence (Hui–Walter design; assumes π, φ equal across centres, just-identified, π > φ); 3-report cases as goodness-of-fit check | GT/T3 supplement |
+| L3 | Simulation adds heterogeneous detectability (beta-distributed π per instance) and correlated readers; state π as an upper bound / unreported counts as a lower bound under heterogeneity | M0.5 |
+| L4 | Parser correction = Rogan–Gladen at mention level per finding type, review sample resampled inside the case bootstrap, check within-case correlation of parser errors; validated in simulation | GT/T1, M0.5 |
+| L5 | Adjudicate a **random, stratified** sample of unmatched predictions (not only disagreements: discrepant analysis inflates accuracy), ideally a dentist with the image | M6 |
+| L6 | Compare latent-model π with union-of-readers truth (PU-DPO's rule) | T2 |
+| L7 | Figure: EviDent-CBCT's hand-set per-class weights vs our estimated π | paper |
+| L8 | Baselines: no-image / centre prior (George et al.), nearest-neighbour report retrieval (Mahmoud & LaBella); other teams' outputs only with permission | M3 |
+| L9 | Mask-based visibility compared with a header-only visibility proxy (George et al. predict field of view from headers) | M1 visibility |
+| L10 | π allowed to vary by centre/context (hierarchical model of §2.1) | M1 step 7 |
+| L11 | *Optional, if data obtainable:* do corrected metrics agree better with the ODIN 2026 clinician Arena ranking than raw metrics? | M3 |
+| L12 | Second domain: REFLACX (multi-read free text) + VinDr-CXR; stability of corrected metrics under reference rewrites (Jeong et al., MIMIC-CXR-Ext-ReRef) | M5 |
+| L13 | Lumetti ontology/metric names, per-centre results (A = Sfax), FDI-level evaluation, GPT-5.2 translation noise acknowledged | writing |
+
+**Analysis-plan freeze:** before the final (paper) runs of M1–M3, the analysis plan — visibility thresholds,
+estimand (B main / A secondary), exclusions, corrected-metric estimator, sensitivity analyses — is written to
+`reports/ANALYSIS_PLAN.md` and committed; later changes are logged in DECISIONS.md as deviations. The GT is
+exploratory and reported as such.
 
 ### M0 — Setup and smoke test
 

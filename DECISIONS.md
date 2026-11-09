@@ -483,3 +483,16 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   types are reported as "parser-limited" and kept out of headline claims; plus no systematic error pattern.
   HANDOFF §7 T1 row and decision rule updated. The same "does it change the conclusion" logic is to be applied
   when T3/T4 guidance values are reviewed.
+- **Literature / novelty check and plan additions (Shivam, 2026-11-09), `reports/LITERATURE_NOVELTY.md`.** Three
+  parallel web searches (report-generation evaluation; statistical methods; dental report generation). Verdict:
+  nobody found estimating per-finding reporting propensity from double reads to correct report-generation
+  *evaluation*, or using masks to decide whether a reference's silence is evidence of absence; but the problem is
+  recognised concurrently — EviDent-CBCT (arXiv 2610.02375, ToothFairy4, hand-set non-mention weights for training)
+  and PU-DPO (arXiv 2608.05341, CXR, union-of-readers truth, training only) — and the statistics (Dawid–Skene,
+  Hui–Walter, capture–recapture) and propensity-scored / PU metrics are established → framed as a principled
+  transfer with new elements. Added L1–L13 to HANDOFF §7 (refinements inside existing milestones; L2 and L11
+  optional), incl. a second (PU-style) corrected-precision estimator, heterogeneity and correlated readers in the
+  simulation, Rogan–Gladen parser correction, random (not discrepant-only) adjudication, and an analysis-plan
+  freeze (`reports/ANALYSIS_PLAN.md`) before final runs. M4–M6 kept as planned.
+- **T1 failure rule made concrete (Shivam, 2026-11-09):** T1 fails if a systematic error pattern appears or if
+  fewer than 3 finding types survive parser correction with upper 95 % CI of π < 0.90 (same count as T2's guidance).
