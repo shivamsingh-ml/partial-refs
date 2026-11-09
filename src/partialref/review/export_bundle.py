@@ -1,0 +1,87 @@
+"""Export a self-contained review bundle for Shivam's own laptop (approved by him 2026-11-09, DUA note in
+DECISIONS): report texts (EN + IT), the parse run's per-report findings, and a report table with relative
+paths. The bundle stays in results/review/bundles/ (git-ignored, not rsynced), file mode 600; copy it to the
+laptop with scp, never via cloud services. Review logs coming back are validated by partialref.review.import_log.
+
+    python -m partialref.review.export_bundle --parse-run results/extract/<run> \
+        --manifest results/manifest/<run> [--langs en,it]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+from pathlib import Path
+
+import pandas as pd
+
+from partialref.extract.score_parser import parser_half
+
+
+def build_bundle(parse_run: Path, manifest: Path, langs: list[str], out_dir: Path) -> Path:
+    reps = pd.read_parquet(manifest / "reports.parquet")
+    reps = reps[reps["lang"].isin(langs)].copy()
+    name = f"review-bundle-{parse_run.name}"
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td) / name
+        rows = []
+        for r in reps.itertuples():
+            rel = Path("reports") / r.case_id / f"reports_{r.lang}" / Path(r.path).name
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(r.path, root / rel)
+            rows.append({"case_id": r.case_id, "lang": r.lang, "report_id": r.report_id, "path": str(rel)})
+        pd.DataFrame(rows).to_parquet(root / "reports.parquet", index=False)
+        dst = root / "parse" / parse_run.name / "per_report"
+        dst.mkdir(parents=True)
+        n_parse = 0
+        for f in parse_run.glob("per_report/*.json"):
+            if f.stem.split("__")[-1] in langs:
+                shutil.copyfile(f, dst / f.name)
+                n_parse += 1
+        try:
+            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                                 check=False).stdout.strip()
+        except OSError:
+            sha = None
+        info = {"parse_run": parse_run.name, "langs": langs, "n_reports": len(rows), "n_parse_files": n_parse,
+                "n_cases": int(reps["case_id"].nunique()), "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "git": sha, "halves": reps["case_id"].drop_duplicates().map(parser_half).value_counts().to_dict()}
+        (root / "bundle_info.json").write_text(json.dumps(info, indent=2))
+        (root / "README.txt").write_text(
+            "ToothFairy4 report review bundle (contains report text: keep on your own machine only, no cloud sync).\n"
+            "Run:   python -m partialref.review.local <this folder>\n"
+            "Logs:  <this folder>/logs/<parse run>/review_log.jsonl  -> scp it back to the cluster into\n"
+            "       results/review/incoming/ (then: python -m partialref.review.import_log <file>)\n")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        tgz = out_dir / f"{name}.tar.gz"
+        old = os.umask(0o077)
+        try:
+            with tarfile.open(tgz, "w:gz") as t:
+                t.add(root, arcname=name)
+        finally:
+            os.umask(old)
+        os.chmod(tgz, 0o600)
+    return tgz
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--parse-run", required=True, type=Path)
+    ap.add_argument("--manifest", required=True, type=Path)
+    ap.add_argument("--langs", default="en,it")
+    ap.add_argument("--out-dir", default=Path("results/review/bundles"), type=Path)
+    a = ap.parse_args(argv)
+    tgz = build_bundle(a.parse_run, a.manifest, [x for x in a.langs.split(",") if x], a.out_dir)
+    print(f"bundle: {tgz} ({tgz.stat().st_size / 1e6:.1f} MB, mode 600)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

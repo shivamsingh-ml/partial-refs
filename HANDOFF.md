@@ -435,7 +435,7 @@ Few-shot examples for the parser are synthetic (written by Claude, no real repor
 
 | Test | What | Pass if |
 | --- | --- | --- |
-| T1 Parser | Local LLM parses all 1000 EN reports (Lumetti ontology; IT also parsed for a translation check); union per case vs Lumetti's released per-patient labels (P/F/S); manual check of 10 reports by Shivam | finding-type+slot F1 ≥ 0.90 for ≥ 6 common finding types (≥ 100 instances); no systematic error in the manual check |
+| T1 Parser | Local LLM parses all 1000 EN reports (Lumetti ontology; IT also parsed for a translation check). **Judged by Shivam's blinded review against the report text** (review app, ~60 held-out reports with extra reports for rarer types; revised 2026-11-09); agreement with Lumetti's per-patient labels is an internal early warning only and is **not reported** | precision and recall ≥ 0.90 in the review for the common finding types; no systematic error pattern |
 | T2 Propensity | π per common finding type, pooled over centres, visible instances, double-read cases (excl. P116/P117/P260/P261), bootstrap CIs | ≥ 3 finding types with upper 95 % CI of π < 0.90 and CI width ≤ 0.30 |
 | T3 Mask agreement | Tier-1 findings (missing teeth, implants, crowns/bridges): π from two readers vs π measured against TF3 masks; false-mention rate φ vs masks | CIs overlap for ≥ 2 of 3 types and φ ≤ 0.05 |
 | T4 Effect size | Plug estimated (p, π) into a simulated scoring of realistic systems (a conservative and a complete one) | corrected − raw precision ≥ 5 points for common types, and/or the ranking of the two systems flips |

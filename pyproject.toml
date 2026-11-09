@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
+review = ["streamlit==1.67.0", "pyarrow"]   # report review app on a laptop: pip install -e ".[review]"
 
 [tool.setuptools.packages.find]
 where = ["src"]

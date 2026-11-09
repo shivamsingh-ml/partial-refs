@@ -451,3 +451,25 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   readers who name teeth (`--region-mode uninformative`: that reader drops out for the unnamed teeth; a tooth
   the same report names with a presence-implying type stays informative). Both reported, with the share of
   reader-tooth pairs affected.
+- **Parser evaluation without Lumetti numbers (Shivam, 2026-11-09).** Lumetti et al.'s labels never enter π,
+  visibility or the metrics; they were only a parser check. Their repo has no licence and the authors cannot
+  be contacted → **no agreement numbers against their labels are reported** in the paper; internal use as an
+  early warning continues. Their ontology and the 9 conventions aligned with their released labels (bridge
+  spans incl. pontics; pontic = also ToothAbsence; tooth-specific bone loss = ToothDevelopmentPathology;
+  toothless arch = 16 teeth; side/quadrant from tooth digits; tooth ids on canal/atrophy findings; condyle
+  only if abnormal; sinus only pathology; planned implants not findings) are cited and listed in the paper,
+  stating they were derived from aggregate label counts. **T1 is judged by Shivam's blinded review against
+  the report text** (HANDOFF §7 T1 updated), plus mask checks and consistency (run-to-run, EN vs IT, two models).
+- **Human review plan (Shivam, 2026-11-09), staged:** (1) after the parser freeze, ~60 held-out reports with
+  extra reports for rarer types (T1, ~3-5 h); (2) if GO, all ~740 double-read P/F/S reports reviewed and
+  corrected in the app → π from human-verified per-report findings (main), parser-only as sensitivity;
+  (3) optional single-read/centre A reports; throughout, ~5 % re-reviewed blind after a week (intra-rater
+  consistency). Review only the frozen parser. Correction mode in the app is built when stage 2 starts.
+- **Local review on Shivam's own laptop (Shivam, 2026-11-09).** Shivam approves his own machine as a location
+  for ToothFairy4 report text (public dataset, not shared further) → `partialref.review.export_bundle` packs
+  report texts (EN + IT), the frozen parse's per-report findings and a relative-path report table into
+  `results/review/bundles/*.tar.gz` (mode 600, git-ignored, not matched by the weekly rsync); copied with scp,
+  no cloud sync. The app runs locally on 127.0.0.1 (`python -m partialref.review.local <bundle>`); the review
+  log (IDs and codes only) comes back by scp and is validated by `partialref.review.import_log` (unknown IDs,
+  unexpected fields, free text, invalid codes rejected) before use. The cluster version (jobs/review_app.sbatch,
+  token in an owner-only file because the home directory is group-readable) stays as an alternative.
