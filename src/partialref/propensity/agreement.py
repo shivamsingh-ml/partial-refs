@@ -171,6 +171,8 @@ def build_instances(reports: pd.DataFrame, mentions: pd.DataFrame, vis: dict[str
     m = mentions.merge(rep[["case_id", "report_id"]], on=["case_id", "report_id"]) \
         .drop_duplicates(["case_id", "report_id", "finding_type", "slot"])
     k_counts = m.groupby(["case_id", "finding_type", "slot"]).size().to_dict()
+    if region_mode not in ("omission", "uninformative"):
+        raise ValueError(f"region_mode must be 'omission' or 'uninformative', got {region_mode!r}")
     # region-level mentions (parser v3, e.g. "partial edentulism of the upper arch"): for each tooth of the
     # region that this report does not name, the reader is uninformative (neither mention nor omission)
     # -> that instance's n drops by one for this reader instead of recording a false omission.

@@ -25,7 +25,8 @@ def main(argv: list[str] | None = None) -> int:
            "REVIEW_LOG_ROOT": str(bundle / "logs"), "REVIEW_LANG": "en"}
     app = Path(__file__).with_name("app.py")
     return subprocess.call([sys.executable, "-m", "streamlit", "run", str(app), "--server.address", "127.0.0.1",
-                            "--server.port", "8501", "--browser.gatherUsageStats", "false"], env=env)
+                            "--server.port", "8501", "--server.headless", "true",
+                            "--browser.gatherUsageStats", "false"], env=env)
 
 
 if __name__ == "__main__":

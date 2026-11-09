@@ -49,7 +49,8 @@ def args() -> argparse.Namespace:
 
 def gate() -> None:
     """Token check (the job writes the token to an owner-only file); without a token set, refuse to run."""
-    if os.environ.get("REVIEW_LOCAL") == "1":      # own machine via partialref.review.local (127.0.0.1 only)
+    # own machine via partialref.review.local: only honoured when the server listens on loopback only
+    if os.environ.get("REVIEW_LOCAL") == "1" and st.get_option("server.address") in ("127.0.0.1", "localhost"):
         return
     token = os.environ.get("REVIEW_TOKEN", "")
     if not token:
@@ -57,7 +58,7 @@ def gate() -> None:
         st.stop()
     if not st.session_state.get("ok"):
         entered = st.text_input("Access token", type="password")
-        if entered and hmac.compare_digest(entered, token):
+        if entered and hmac.compare_digest(entered.encode(), token.encode()):
             st.session_state["ok"] = True
             st.rerun()
         st.stop()
@@ -86,10 +87,13 @@ def main() -> None:
 
         def go_to() -> None:                       # applied once, when the box changes
             cid = st.session_state.get("jump", "").strip()
+            st.session_state["jump_miss"] = bool(cid) and cid not in order
             if cid in order:
                 st.session_state["pos"] = order.index(cid)
 
         st.text_input("Go to case ID (optional)", key="jump", on_change=go_to)
+        if st.session_state.get("jump_miss"):
+            st.caption("That case is not in the current filter (half / centres / multi-report).")
         c1, c2 = st.columns(2)
         if c1.button("◀ Previous", width="stretch"):
             st.session_state["pos"] = max(0, st.session_state["pos"] - 1)

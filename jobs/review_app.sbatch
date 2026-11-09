@@ -20,7 +20,8 @@ cd "$PROJECT_DIR"
 [ -d "$1/per_report" ] || { echo "no per_report/ in $1" >&2; exit 1; }
 export REVIEW_PARSE_RUN=$1 REVIEW_LANG=${2:-en}
 export REVIEW_MANIFEST=results/manifest/20261107-1830-c2aa718-manifest REVIEW_LOG_ROOT=results/review
-TOKEN_FILE=$HOME/.secrets/review_token
+unset REVIEW_LOCAL                                   # never inherit local (no-token) mode from the login shell
+TOKEN_FILE=$HOME/.secrets/review_token_${SLURM_JOB_ID:-manual}
 mkdir -p "$(dirname "$TOKEN_FILE")"; chmod 700 "$(dirname "$TOKEN_FILE")"
 ( umask 077; python -c "import secrets; print(secrets.token_urlsafe(18))" > "$TOKEN_FILE" )
 export REVIEW_TOKEN=$(cat "$TOKEN_FILE")
@@ -35,6 +36,7 @@ Then open  http://localhost:8501  and paste the token from:   cat $TOKEN_FILE
 Stop the app when done:  scancel ${SLURM_JOB_ID:-<jobid>}
 ---------------------------------------------------------------------------------------------
 EOF
-exec streamlit run src/partialref/review/app.py --server.address 0.0.0.0 --server.port "$PORT" \
+trap 'rm -f "$TOKEN_FILE"' EXIT TERM INT
+streamlit run src/partialref/review/app.py --server.address 0.0.0.0 --server.port "$PORT" \
   --server.headless true --browser.gatherUsageStats false --server.enableXsrfProtection true \
   --server.fileWatcherType none

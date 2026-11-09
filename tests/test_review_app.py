@@ -102,6 +102,8 @@ def test_bundle_local_mode_and_import_round_trip(setup, tmp_path, monkeypatch):
     info = json.loads((b / "bundle_info.json").read_text())
     assert info["n_reports"] == 6 and info["n_parse_files"] == 3
     monkeypatch.delenv("REVIEW_TOKEN")
+    from streamlit import config as st_config
+    st_config.set_option("server.address", "127.0.0.1")          # what partialref.review.local passes
     for k, v in {"REVIEW_LOCAL": "1", "REVIEW_PARSE_RUN": str(b / "parse" / run.name), "REVIEW_MANIFEST": str(b),
                  "REVIEW_LOG_ROOT": str(b / "logs")}.items():
         monkeypatch.setenv(k, v)
@@ -117,7 +119,44 @@ def test_bundle_local_mode_and_import_round_trip(setup, tmp_path, monkeypatch):
     good = log.read_text().splitlines()[0]
     bad = json.dumps({**json.loads(good), "note": "free text not allowed"})
     incoming.write_text(good + "\n" + bad + "\n")
-    rc = import_main([str(incoming), "--manifest", str(man), "--review-root", str(tmp_path / "res_review")])
+    rc = import_main([str(incoming), "--manifest", str(man), "--review-root", str(tmp_path / "res_review"),
+                      "--extract-root", str(run.parent)])
+    st_config.set_option("server.address", "")
     assert rc == 1                                                            # one rejected line
     imported = (tmp_path / "res_review" / run.name / "review_log.jsonl").read_text().splitlines()
     assert len(imported) == 1 and "SYNTHETIC" not in imported[0]
+
+
+def test_local_flag_without_loopback_still_needs_token(setup, monkeypatch):
+    """Review B2: REVIEW_LOCAL inherited on the cluster (0.0.0.0) must not bypass the token gate."""
+    monkeypatch.setenv("REVIEW_LOCAL", "1")
+    at = AppTest.from_file(APP, default_timeout=30).run()
+    assert len(at.text_input) == 1 and not any("SYNTHETIC" in t.value for t in at.text)
+    at.text_input[0].input("wrong ünïcode").run()                 # non-ASCII entry: no crash, still locked
+    assert not at.exception and not any("SYNTHETIC" in t.value for t in at.text)
+
+
+def test_import_rejects_crafted_records():
+    from partialref.review.import_log import check_record
+    known, runs = {("P001", "21_100")}, {"run1"}
+    good = {"logged_at": "2026-11-10T10:00:00", "parse_run": "run1", "lang": "en", "case_id": "P001",
+            "report_id": "21_100", "half": "tune",
+            "verdicts": [{"idx": 0, "finding_type": "Caries", "anchor": "36, 37", "verdict": "wrong_slot",
+                          "correct_slot": "46"}],
+            "missed": [{"finding_type": "Caries", "slots": ["36"]}], "flags": ["translation_looks_odd"]}
+    assert check_record(good, known, runs) == []
+    bad = [
+        {**good, "verdicts": [{**good["verdicts"][0], "idx": "x" * 50}]},
+        {**good, "verdicts": [{**good["verdicts"][0], "idx": {"t": "text"}}]},
+        {**good, "verdicts": [""]},
+        {**good, "verdicts": [{**good["verdicts"][0], "correct_slot": ["36"]}]},
+        {**good, "verdicts": [{**good["verdicts"][0], "anchor": "the report says something"}]},
+        {**good, "missed": [{"finding_type": "Caries", "slots": {"36": "text"}}]},
+        {**good, "flags": {"parser_missed_findings": "text"}},
+        {**good, "half": "free text here"}, {**good, "lang": "xx"}, {**good, "logged_at": "yesterday"},
+        {**good, "parse_run": "../../escaped"}, {**good, "parse_run": "unknown_run"},
+        {**good, "note": "free"}, {k: v for k, v in good.items() if k != "flags"},
+    ]
+    for b in bad:
+        errs = check_record(b, known, runs)
+        assert errs and all(e.isidentifier() for e in errs)       # codes only, never content
