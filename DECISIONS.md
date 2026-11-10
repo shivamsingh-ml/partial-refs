@@ -562,3 +562,53 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   now. Reason: comparability with the published labels and the challenge metric, and defensibility; a derived
   view would only help if sub-type π differ or cross-type mismatches are common, which is not measured. A cheap
   CPU check of both is planned after the parser is frozen; nothing changes before that.
+- **Parser v3.2 tune-half result and freeze rule (Shivam, 2026-11-10).** v3.2 against Lumetti's labels on the
+  tune half, English (312 cases, 508 reports): case level (type present in the case) micro F1 0.940, tooth
+  level 0.854. Case level is ≥ 0.876 for 13 of 14 types; PathologicalLesion is the exception (0.699 case,
+  0.575 tooth; boundary to PeriapicalLesion). ToothAbsence at tooth level is 0.767 (fp 380, from expanding
+  toothless arches), while against the masks v3.2 is the best version (lower arch, 263 cases: F1 0.820 v3 /
+  0.795 v3.1 / 0.875 v3.2). Evidence:
+  `results/extract/20261110-1714-4142c99-parser-check-qwen3-32b-v32-tune-en-n0-subset-all/parser_vs_lumetti.csv`,
+  `results/extract/20261110-1700-4142c99-parse-qwen3-32b-v32-tune-n0-subset-615701/diagnosis/README.txt`.
+  **Rule:** no v3.3. The parser is frozen at v3.2 if, in the full run, the held-out per-type agreement with
+  Lumetti is in the same range as on the tune half (differences of the size expected between two parsers).
+  Weak types (PathologicalLesion) are marked "use with caution" or left out of the main π table, not fixed.
+  Lumetti agreement stays an internal check (not in the paper) and does not replace the blinded review that
+  the parser-error correction of π (T1) needs. Order: 5-case diagnostic EN+IT+repeat (job 615781), then the
+  full run.
+- **Translation errors in the English reports (2026-11-10).** Rule-based screen of all 1,000 IT/EN pairs plus
+  Claude's reading of 99 tune-half pairs (DUA exception, tune half only). Confirmed meaning-changing
+  mistranslations: 3 reports, all reader 30 (P045 30_1278, P049 30_1266, P022 30_1443): the Italian
+  abbreviation for "dental elements" in a "teeth present" statement became missing teeth / edentulism. Random
+  sample of 45 full tune pairs: 0 meaning-changing errors (95 % upper bound about 6–7 %). Of the rule flags on
+  the tune half only the polarity flag found real errors (3 of 5); the others were false alarms of the rules.
+  Held-out candidates from the rules are listed but not read. Evidence (IDs, flags, verdicts; no text):
+  `results/audit/20261110-1737-4142c99-translation-screen/`. A local-model auditor for full coverage
+  (`src/partialref/extract/translation_audit.py`, tests, job script) is written, reviewed and committed, but **parked and
+  not run**: off the critical path; the reviewer's fixes (planted-error rules, recall counting, a faithful
+  example, provenance per job, fail-fast) come before any run.
+- **Paper focus: methods paper, π inside the decoder (Shivam, 2026-11-10).** The headline is the
+  segmentation-aware joint decoder (M4) that uses the estimated reporting propensity π; the evaluation work
+  (π with visibility, corrected metrics) is its foundation, not a separate paper. π enters the decoder in the
+  co-occurrence factors (counts corrected for omission) and in the selection step (targets q and q × π,
+  replacing V2V2R's hand-set silence rules), and the evaluation (corrected precision). Candidate additions,
+  not yet decided: π-aware calibration (a non-mention is not a clean negative) and π-weighted non-mention
+  loss in the LoRA training (EviDent-CBCT uses hand-set weights). Consequences: the GT gate stays, with the
+  question "is π good enough to build the decoder on?" (T1 blinded review and T2 as planned, T3/T4 lighter);
+  no retraining before that decision, as before; the split proposal can be prepared in parallel (no
+  compute). Second domain (M5) and reader study (M6) become optional. **Venue is open** (MedIA not fixed;
+  Artificial Intelligence in Medicine and others to be checked at the gate). The boundary with Chen's
+  verifier-grounded generation paper must be agreed before decoder work starts.
+- **V2V2R code audit in two parts, each before its retraining (Shivam, 2026-11-10).** The submitted code in
+  `external/odin2026/` is checked for inconsistencies and bugs by several independent reviewer agents
+  (read-only; no report text, no images), with two questions: what fits our plan as it is, and what must
+  change. **Part 1, before the segmentation retraining:** segmentation training and inference
+  (`segmentation.py`, `orientation.py`, `report_side.py`, `umamba2/`): orientation, header and affine
+  handling, left/right and up/down conventions, label maps, mirroring in augmentation and test time, how the
+  training cases are selected. Reason: many files have side swaps, header and orientation problems (TF3 vs
+  TF4 headers, mirrored TF3 tooth labels, the double-mapped labels on centre A; entries of 2026-11-07 to
+  2026-11-09), and a problem found after the retraining would cost the GPU job twice. Part 1 can run before
+  the GT decision (no compute). **Part 2, before the per-fold LoRA retraining (M3):** VLM, facts, schema,
+  post-processing and report assembly, including the open `facts.py` question (were the VLM training facts
+  built from sequential labels?). Fixes follow §0.4: edit in place, one commit per fix that says why.
+  Findings go to `reports/V2V2R_CODE_AUDIT.md`.

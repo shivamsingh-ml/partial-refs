@@ -426,6 +426,9 @@ extent (mm), sha256 of each file. Every later run records the manifest hash.
 
 Order (revised 2026-11-08): M0 → **GT (go/no-go test)** → M0.5 → M1 → G1 → M2 → G2 → M3 → G3 → M4 → G4 → M5/M6.
 **No V2V2R retraining, segmentation retraining or decoder work before the GT decision.**
+**Focus (2026-11-10, DECISIONS.md):** methods paper — the π-aware decoder (M4) is the headline and the
+evaluation work is its foundation. GT stays as the check that π is good enough to build on. M5/M6 are
+optional; the venue is open (MedIA not fixed).
 
 ### GT — Go/no-go test (before any further heavy compute)
 
@@ -590,6 +593,12 @@ mask-visible findings; noise floor computed; controls run on all folds.
 
 On our splits (§6.4): 5-fold CV on the development set for all development; the locked test set
 once at the end; LOCO as a separate analysis.
+- **Code audit first (added 2026-11-10).** Several independent reviewer agents check `external/odin2026/`
+  for inconsistencies and bugs (read-only): what fits our plan, what must change. Part 1 before the
+  segmentation retraining of §6.4 (segmentation training and inference: orientation, headers, left/right,
+  label maps, mirroring, case selection); part 2 before any LoRA retraining (VLM, facts, schema,
+  post-processing, report assembly). Report: `reports/V2V2R_CODE_AUDIT.md`. Fixes edit the submitted code
+  in place, one commit per fix that says why (§0.4).
 - V2V2R full pipeline with LoRA **retrained per fold** (`vqa/code/train_vision_lora.py`, ~1,190 steps per
   fold on A100; approved 2026-11-07); ablations from the paper (segmentation-only, base
   Qwen3.5-9B, +LoRA); `POSTPROCESS_CONFIG=configs/postprocess/no_source_rules.yaml`; controls.
