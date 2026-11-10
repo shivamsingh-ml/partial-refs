@@ -229,3 +229,54 @@ def test_salvage_with_dropped_findings_is_retried(tmp_path):
     assert not m.get("dropped_findings") and m["repetition_penalty"] == 1.1
     meta = pd.read_parquet(out / "extractions_en.parquet")
     assert per_report.report_ok(meta).all()
+
+
+def test_conflicts_recorded_not_resolved_and_optional_convention():
+    """v3.1 after review + mask check: parsing stores findings as given and records conflict details;
+    the narrowed convention is optional (RootResidue and eruption/development TDP only)."""
+    from partialref.extract.ontology import absence_conflict_details, apply_absence_convention
+    out = {"findings": [{"finding_type": "ToothAbsence", "tooth_ids": ["36", "38", "46", "35"]},
+                        {"finding_type": "RootResidue", "tooth_ids": ["36"]},
+                        {"finding_type": "ToothDevelopmentPathology", "tooth_ids": ["38"],
+                         "qualifiers": {"eruption_status": ["Impacted"]}},
+                        {"finding_type": "ToothDevelopmentPathology", "tooth_ids": ["46"],
+                         "qualifiers": {"periodontal_feature": ["VerticalDefect"]}},          # extraction site
+                        {"finding_type": "ToothDevelopmentPathology", "tooth_ids": ["35"],
+                         "qualifiers": {"development_feature": ["Deciduous"]}},               # agenesis case
+                        {"finding_type": "ToothAbsence", "tooth_ids": ["48"], "region": "LowerArch"},
+                        {"finding_type": "ToothDevelopmentPathology", "tooth_ids": ["48"],
+                         "qualifiers": {"bone_inclusion": ["FullInclusion"]}}],
+           "not_assessable": []}
+    ext, info = per_report.parse_extraction(json.dumps(out))
+    absent = sorted(t for f in ext.findings if f.finding_type.value == "ToothAbsence" for t in f.tooth_ids)
+    assert absent == ["35", "36", "38", "46", "48"] and "absence_convention_removed" not in info   # untouched
+    kinds = {d["tooth"]: d["with"] for d in absence_conflict_details(ext.findings)}
+    assert kinds == {"36": "RootResidue", "38": "TDP_eruption_development", "46": "TDP_periodontal",
+                     "35": "TDP_deciduous_supernumerary", "48": "TDP_eruption_development"}
+    fixed, n = apply_absence_convention(ext.findings)
+    left = sorted(t for f in fixed if f.finding_type.value == "ToothAbsence" for t in f.tooth_ids)
+    assert left == ["35", "46"] and n == 3
+    assert not any(f.finding_type.value == "ToothAbsence" and f.region for f in fixed)   # no fallback to region
+
+
+def test_retry_errors_reparses_reports_with_dropped_findings(tmp_path, server):
+    man = tmp_path / "manifest"
+    man.mkdir()
+    p = tmp_path / "data" / "P001" / "reports_en" / "cbct_21_100.txt"
+    p.parent.mkdir(parents=True)
+    p.write_text("synthetic placeholder text")
+    pd.DataFrame([{"case_id": "P001", "lang": "en", "report_id": "21_100", "path": str(p)}]).to_parquet(
+        man / "reports.parquet")
+    out = tmp_path / "run"
+    (out / "per_report").mkdir(parents=True)
+    stored = {"meta": {"case_id": "P001", "report_id": "21_100", "lang": "en", "error": None, "dropped_findings": 2},
+              "extraction": {"findings": [], "not_assessable": []}}
+    f = out / "per_report" / "P001__21_100__en.json"
+    f.write_text(json.dumps(stored))
+    args = ["--manifest", str(man), "--lang", "en", "--server", server, "--model", "fake", "--out-dir", str(out),
+            "--workers", "1"]
+    per_report.main(args)                                              # plain resume keeps the stored file
+    assert json.loads(f.read_text())["meta"]["dropped_findings"] == 2
+    per_report.main(args + ["--retry-errors"])                         # --retry-errors re-parses it
+    d = json.loads(f.read_text())
+    assert not d["meta"].get("dropped_findings") and len(d["extraction"]["findings"]) == 2

@@ -25,8 +25,16 @@ import pandas as pd
 from pydantic import ValidationError
 
 from partialref.extract.fewshot import messages
-from partialref.extract.ontology import (Finding, FindingType, ReportExtraction, absence_conflicts, instances,
-                                         json_schema, slot_kind)
+from partialref.extract.ontology import (
+    Finding,
+    FindingType,
+    ReportExtraction,
+    absence_conflict_details,
+    absence_conflicts,
+    instances,
+    json_schema,
+    slot_kind,
+)
 from partialref.provenance import make_run_id, write_provenance
 
 
@@ -97,24 +105,30 @@ def parse_extraction(content: str) -> tuple[ReportExtraction, dict]:
     """Validate the model output. If the report as a whole fails validation (schema-valid output can still
     violate the per-type anchor rule, review 2026-11-09 #1), salvage it finding by finding: repair missing
     side/quadrant from tooth ids, drop findings that stay invalid, and count both. Truncated / non-JSON
-    output still raises (whole report failed)."""
+    output still raises (whole report failed). The model's findings are stored as given; absent/present
+    conflicts are only recorded (extract_one), never resolved here, so any convention stays reversible."""
     try:
         return ReportExtraction.model_validate_json(content), {"salvaged": False}
     except ValidationError:
-        data = json.loads(content)                       # JSONDecodeError -> report failed
-        if not isinstance(data, dict):
-            raise
-        good, repaired, dropped = [], 0, 0
-        for f in data.get("findings") or []:
-            fixed = _repair_anchor(f) if isinstance(f, dict) else [f]
-            repaired += fixed != [f]
-            for g in fixed:
-                try:
-                    good.append(Finding.model_validate(g))
-                except ValidationError:
-                    dropped += 1
-        ext = ReportExtraction(findings=good, not_assessable=data.get("not_assessable") or [])
-        return ext, {"salvaged": True, "repaired_findings": repaired, "dropped_findings": dropped}
+        return _salvage(content)
+
+
+def _salvage(content: str) -> tuple[ReportExtraction, dict]:
+    """Per-finding salvage of an output that failed whole-report validation (see parse_extraction)."""
+    data = json.loads(content)                           # JSONDecodeError -> report failed
+    if not isinstance(data, dict):
+        raise TypeError("model output is not a JSON object")
+    good, repaired, dropped = [], 0, 0
+    for f in data.get("findings") or []:
+        fixed = _repair_anchor(f) if isinstance(f, dict) else [f]
+        repaired += fixed != [f]
+        for g in fixed:
+            try:
+                good.append(Finding.model_validate(g))
+            except ValidationError:
+                dropped += 1
+    ext = ReportExtraction(findings=good, not_assessable=data.get("not_assessable") or [])
+    return ext, {"salvaged": True, "repaired_findings": repaired, "dropped_findings": dropped}
 
 
 def extract_one(server: str, model: str, text: str, mode: str, repetition_penalty: float | None = None,
@@ -131,6 +145,7 @@ def extract_one(server: str, model: str, text: str, mode: str, repetition_penalt
         ext, info = parse_extraction(content)
         meta.update(info)
         meta["absence_conflicts"] = len(absence_conflicts(ext.findings))
+        meta["absence_conflict_details"] = absence_conflict_details(ext.findings)
         meta["error"] = None
     except ValidationError as e:
         ext, meta["error"] = None, f"validation: {e.error_count()} errors"
@@ -197,14 +212,19 @@ def main(argv: list[str] | None = None) -> int:
 
     def work(row) -> dict:
         dst = out / "per_report" / f"{row.case_id}__{row.report_id}__{a.lang}.json"
+        prev = None
         if dst.exists():
             try:
                 prev = json.loads(dst.read_text())
             except json.JSONDecodeError:          # partial file from a killed job -> parse again
                 prev = None
-            if prev is not None and (prev["extraction"] is not None or not a.retry_errors):
+            prev_ok = prev is not None and prev["extraction"] is not None and not prev["meta"].get("dropped_findings")
+            if prev is not None and (prev_ok or not a.retry_errors):   # --retry-errors: redo every not-OK report
                 return prev["meta"]
         text = Path(row.path).read_text(encoding="utf-8", errors="replace")
+        stored = None                                 # --retry-errors: the stored attempt stays a candidate
+        if prev is not None and prev["extraction"] is not None:
+            stored = (ReportExtraction.model_validate(prev["extraction"]), prev["meta"])
         ext, meta = extract_one(a.server, a.model, text, mode)
         # failed parses are usually degenerate repetition loops on normal-length reports; a salvaged parse
         # that had to DROP findings also counts as not OK (report_ok). Retry with stronger repetition
@@ -215,18 +235,20 @@ def main(argv: list[str] | None = None) -> int:
         def badness(e, m):
             return (e is None, m.get("dropped_findings") or 0)
 
-        best, errors, n_try = (ext, meta), [], 1
+        def problem(e, m):
+            return m.get("error") or f"dropped_findings: {m.get('dropped_findings')}"
+
+        attempts = ([stored] if stored else []) + [(ext, meta)]
         for pen, temp in (a.retry_ladder if not fully_ok(ext, meta) else []):
-            errors.append(meta.get("error") or f"dropped_findings: {meta.get('dropped_findings')}")
-            ext, meta = extract_one(a.server, a.model, text, mode, pen, temp, 0 if temp > 0 else None)
-            n_try += 1
-            if badness(ext, meta) < badness(*best):
-                best = (ext, meta)
-            if fully_ok(ext, meta):
+            attempts.append(extract_one(a.server, a.model, text, mode, pen, temp, 0 if temp > 0 else None))
+            if fully_ok(*attempts[-1]):
                 break
-        ext, meta = best
-        if errors:                                    # meta = kept attempt; problems of the tries before
-            meta.update(previous_errors=errors, first_attempt_error=errors[0], attempts_made=n_try)
+        kept = min(range(len(attempts)), key=lambda i: (badness(*attempts[i]), i))   # earliest best attempt
+        ext, meta = attempts[kept]
+        if len(attempts) > 1:                         # problems of every attempt that was NOT kept, in order
+            others = [problem(*attempts[i]) for i in range(len(attempts)) if i != kept]
+            meta.update(previous_errors=others, first_attempt_error=problem(*attempts[0]) if kept else None,
+                        attempts_made=len(attempts), kept_attempt=kept + 1)
         meta.update(case_id=row.case_id, report_id=row.report_id, lang=a.lang,
                     n_findings=len(ext.findings) if ext else None)
         tmp = dst.with_suffix(".json.tmp")           # atomic: a killed job never leaves a partial file
@@ -267,7 +289,7 @@ def main(argv: list[str] | None = None) -> int:
                                                  meta_df.get("temperature", [0.0] * len(meta_df)), meta_df["error"])
                    if pd.notna(p) and p and pd.isna(e)], dtype=object).value_counts().to_dict(),
                "errors": meta_df["error"].value_counts().to_dict(),
-               "n_instances": len(rows_inst), "median_seconds": float(meta_df["seconds"].median()),
+               "n_instances": len(rows_inst), "median_seconds": float(pd.to_numeric(meta_df.get("seconds", pd.Series(dtype=float)), errors="coerce").median()),
                "finish_reasons": meta_df.get("finish_reason", pd.Series(dtype=str)).value_counts().to_dict()}
     (out / f"summary_{a.lang}.json").write_text(json.dumps(summary, indent=2, default=str))
     write_provenance(out, extra={"manifest_run": str(a.manifest), "model": a.model, "model_path": a.model_path,

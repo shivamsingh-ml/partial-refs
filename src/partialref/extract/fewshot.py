@@ -9,7 +9,9 @@ follow the finding ontology of Lumetti et al. (MICCAI 2026, "Ontology-Grounded S
 Dental CBCT Reporting"); the coding conventions (bridges, tooth-level periodontal defects, edentulous
 arches) were measured from their released labels. v3 (2026-11-09): tooth abbreviations ("e.d."), presence
 statements, ranges through the midline, region-level missing teeth, absence/presence conflicts — all from
-our own error analysis (counts only), example 5 written from scratch. Their repository states no licence: none of their
+our own error analysis (counts only), example 5 written from scratch. v3.1 (2026-11-10): toothless arch or
+quadrant = all its teeth, region only for partial edentulism without numbers; residual root / impacted tooth are
+never ToothAbsence; example 6 (toothless jaw next to partial edentulism) written from scratch. Their repository states no licence: none of their
 files (code, prompts, examples) were opened or copied; this prompt and its examples are our own.
 """
 
@@ -25,10 +27,15 @@ Return only JSON that matches the given schema: {{"findings": [...], "not_assess
 Finding types (choose exactly one per finding) and their anchor:
 - ToothAbsence (tooth_ids, or region): a tooth the report says is MISSING (absent, missing, extracted,
   lost, agenesis, edentulous / edentulism of that tooth or area), including pontic positions of a bridge.
-  A FULLY EDENTULOUS arch (the report says the arch has no teeth at all) = ToothAbsence for all 16 teeth
-  of that arch (11-18 and 21-28, or 31-38 and 41-48). Missing teeth stated WITHOUT tooth numbers
-  ("partial edentulism of the upper arch", "edentulous gaps in the lower left quadrant") = ONE
-  ToothAbsence with "region" (UpperArch, LowerArch, QuadrantI-IV) and NO tooth_ids; never guess numbers.
+  An arch or quadrant the report calls edentulous / toothless / without teeth, with no remaining tooth
+  named for it ("edentulous lower arch", "edentulous mandible", "edentulous maxilla", "toothless upper
+  jaw") = ToothAbsence with ALL its tooth_ids: 16 for an arch (11-18 and 21-28, or 31-38 and 41-48), 8 for
+  a quadrant; "edentulous except 33 and 43" = all its teeth EXCEPT those named as remaining. "region"
+  (UpperArch, LowerArch, QuadrantI-IV, NO tooth_ids) is ONLY for SOME missing teeth stated without numbers
+  ("partially edentulous", "edentulous gaps", "some missing elements", "partial edentulism", and an
+  edentulous sector / saddle / span / area without numbers: the quadrant if the side is given, else the
+  arch); never list all teeth for these, never guess numbers. An edentulous ridge or jaw of a WHOLE arch
+  ("edentulous mandibular ridge", "edentulous maxillary ridge") is the whole arch (all 16 teeth).
   NOT for impacted/unerupted teeth (ToothDevelopmentPathology), NOT where a root residue remains
   (RootResidue), and NEVER for teeth or arches that are not visible / not included in the scan.
 - ToothDevelopmentPathology (tooth_ids): (a) impacted, semi-included, unerupted, ectopic,
@@ -68,7 +75,8 @@ Rules:
   finding.
 - A tooth called missing cannot also have caries, a restoration, a root canal treatment, a periapical
   lesion, a root residue or a development pathology in the same report: if both seem to apply, re-read
-  the report; list the tooth as missing only if the report explicitly says so.
+  the report; list the tooth as missing only if the report explicitly says so. A residual root is
+  RootResidue, an impacted / unerupted / included tooth is ToothDevelopmentPathology: neither is ToothAbsence.
 - One finding per type and anchor; several teeth with the same finding may share one finding.
 - Negative or normal statements ("no caries", "regular condyles") produce NO finding.
 - Statements that a structure is not visible / not assessable / outside the field of view go to
@@ -175,6 +183,21 @@ FEWSHOT = [
             {"finding_type": "EndodonticTreatment", "tooth_ids": ["22"],
              "qualifiers": {"treatment_quality": ["DoesNotReachApex"]}}],
          "not_assessable": ["condyle_left", "condyle_right"]},
+    ),
+    (
+        "Edentulous maxilla with severe resorption of the alveolar ridge in both posterior sectors. Mandible: "
+        "partially edentulous, residual root of 36, teeth 33 and 43 with composite restorations; impacted 38.",
+        {"findings": [
+            {"finding_type": "ToothAbsence", "tooth_ids": ["11", "12", "13", "14", "15", "16", "17", "18",
+                                                           "21", "22", "23", "24", "25", "26", "27", "28"]},
+            {"finding_type": "JawAtrophy", "quadrant": "QuadrantI", "qualifiers": {"severity": ["Severe"]}},
+            {"finding_type": "JawAtrophy", "quadrant": "QuadrantII", "qualifiers": {"severity": ["Severe"]}},
+            {"finding_type": "ToothAbsence", "region": "LowerArch"},
+            {"finding_type": "RootResidue", "tooth_ids": ["36"]},
+            {"finding_type": "ConservativeRestoration", "tooth_ids": ["33", "43"]},
+            {"finding_type": "ToothDevelopmentPathology", "tooth_ids": ["38"],
+             "qualifiers": {"eruption_status": ["Impacted"]}}],
+         "not_assessable": []},
     ),
 ]
 

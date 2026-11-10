@@ -39,10 +39,16 @@ These rules override any default habit.
    check it on real files and record what you found in `DECISIONS.md`.
 7. **Never fabricate results.** Every number in a report must come from a file in `results/`
    produced by code in this repo at a recorded git SHA. If something wasn't run, say so.
-8. **Data use agreement (DUA).** ToothFairy4 data (volumes, masks, report text) is
-   access-controlled (CC BY-NC-SA + data-use terms). Never commit it, never push it, never paste
-   report text into GitHub issues/PRs, and **never send it to an external API** (OpenAI, etc.)
-   unless Shivam confirms in writing that the DUA allows it. Local models only by default.
+8. **Data use agreement (DUA).** ToothFairy4 data (volumes, masks, report text) is released under
+   CC BY-NC-SA 4.0 with sign-up to download (no further data-use terms found on the public pages,
+   checked 2026-11-10). Never commit it, never push it, never paste report text into GitHub
+   issues/PRs, and **never send it to an external API** (OpenAI, etc.) unless Shivam confirms in
+   writing that the terms allow it. Local models only by default.
+   **Confirmed exception (Shivam, 2026-11-10, DECISIONS.md):** Claude may read report TEXT of the
+   tune half (`parser_half`) in the session, for parser error analysis only. Not covered: the
+   held-out half, volumes/masks/images, and any parsing, labelling or metric computation (parser
+   and judge stay local models). Report text still never goes into commits, logs, results files
+   or prompt examples.
 9. **No backups on the cluster.** The 200 TB NVMe shared filesystem is NOT backed up. Code lives
    in git and is pushed at least daily. Small derived results (JSON/CSV without report text) are
    synced off-cluster weekly (§5.6).
@@ -694,7 +700,8 @@ SLURM job ID, node, GPU, container digest, conda `env export` hash, `meteor_back
 ## 10. Things the agent must never do
 
 - Commit or push data, masks, probabilities, model weights, or any report text.
-- Send ToothFairy4 content to external APIs without written DUA confirmation.
+- Send ToothFairy4 content to external APIs without written DUA confirmation (given 2026-11-10 only for
+  parser error analysis on tune-half report text, §0.8).
 - Edit `external/odin2026/` without a commit message saying why (and a DECISIONS.md entry for
   anything that changes outputs).
 - Change the `radfact-lite` pin, METEOR backend, or BLEU aggregation (corpus-level, NLTK method-1
@@ -831,7 +838,7 @@ the cause is outside our control. Record the switch in DECISIONS.md.
 | 40-case held-out list location | not needed (own splits, revision 2026-11-07) |
 | GitHub org/repo for `partial-refs` | personal `shivamsingh-ml`, private |
 | SMB backup path | not used — lab PC pulls weekly (README.md) |
-| DUA: external APIs allowed? (default: no) | no |
+| DUA: external APIs allowed? (default: no) | only Claude reading tune-half report text for parser error analysis (Shivam, 2026-11-10); otherwise no |
 | Reader-study size and readers | after M1 |
 
 ---

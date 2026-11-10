@@ -137,8 +137,11 @@ def main() -> None:
                 na = (d.get("extraction") or {}).get("not_assessable") or []
                 if na:
                     st.caption("Not assessable: " + ", ".join(na))
-                flags = {k: m.get(k) for k in ("salvaged", "dropped_findings", "absence_conflicts", "attempts_made")
-                         if m.get(k)}
+                flags = {k: m.get(k) for k in ("salvaged", "dropped_findings", "absence_conflicts", "attempts_made",
+                                               "kept_attempt") if m.get(k)}
+                if m.get("absence_conflict_details"):
+                    flags["missing_and_present"] = "; ".join(f"{d['tooth']}+{d['with']}"
+                                                            for d in m["absence_conflict_details"])
                 if flags:
                     st.caption("Parser notes: " + ", ".join(f"{k}={v}" for k, v in flags.items()))
                 if log_on:

@@ -19,6 +19,9 @@ Its §0 operating rules override default habits. Decisions go in [DECISIONS.md](
    code in this repo at a recorded git SHA.
 8. **DUA.** ToothFairy4 data (volumes, masks, report text) is never committed, pushed, pasted into
    issues/PRs/chat, or sent to an external API. Local models only.
+   **Exception confirmed by Shivam 2026-11-10 (DECISIONS.md):** Claude may read report TEXT of the tune
+   half only, for parser error analysis. Never the held-out half, never images/masks, never for parsing
+   or metrics; report text never goes into commits, logs, results or prompt examples.
 9. **No backups on the cluster.** Push code daily; sync small derived results weekly (HANDOFF §5.6).
 10. **Log decisions** in DECISIONS.md with date, reason, evidence path.
 11. **Login node is shared.** Only editing, git, `ls`/`head`, jobs < ~2 min on the login node.

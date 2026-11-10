@@ -132,10 +132,16 @@ def test_region_level_absence_and_conflicts():
 
 
 def test_prompt_v3_rules_present():
-    for phrase in ('"e.d." NEVER means edentulous', "ARE PRESENT", "through it", '"region"'):
+    for phrase in ('"e.d." NEVER means edentulous', "ARE PRESENT", "through it", '"region"',
+                   "16 for an arch", "ONLY for SOME missing teeth", "neither is ToothAbsence",
+                   "EXCEPT those named as remaining", "sector / saddle / span / area",
+                   "edentulous ridge or jaw of a WHOLE arch"):
         assert phrase in SYSTEM_PROMPT
     ex = [o for _, o in FEWSHOT if any(f.get("region") for f in o["findings"])]
-    assert len(ex) == 1 and ReportExtraction.model_validate(ex[0])
+    assert len(ex) == 2 and all(ReportExtraction.model_validate(e) for e in ex)
+    # every example that calls an arch edentulous lists all 16 teeth (v3.1 regression guard)
+    full = [o for t, o in FEWSHOT if "Edentulous maxilla" in t or "Edentulous lower arch" in t]
+    assert len(full) == 2 and all(any(len(f.get("tooth_ids", [])) == 16 for f in o["findings"]) for o in full)
 
 
 def test_score_excludes_region_slots_vs_lumetti(tmp_path):

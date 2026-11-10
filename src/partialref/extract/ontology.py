@@ -22,8 +22,15 @@ import re
 from enum import Enum
 from typing import Annotated, Literal
 
-from pydantic import (BaseModel, ConfigDict, Field, StringConstraints, create_model, field_validator,
-                      model_validator)
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    create_model,
+    field_validator,
+    model_validator,
+)
 
 
 class FindingType(str, Enum):
@@ -174,6 +181,61 @@ class ReportExtraction(BaseModel):
 def instances(case_id: str, findings: list[Finding]) -> list[tuple[str, str, str]]:
     """(case, type, slot) instances, de-duplicated."""
     return sorted({(case_id, f.finding_type.value, s) for f in findings for s in f.slots()})
+
+
+# Optional downstream convention (NOT applied at parsing; v3.1 review + mask check 2026-11-10): a tooth that
+# the same report codes as RootResidue, or as ToothDevelopmentPathology of the eruption / development kind
+# (impacted, included, orientation, incomplete root / open apex), is not ToothAbsence. Periodontal-only,
+# deciduous and supernumerary TDP are NOT used (the mask mostly confirms those teeth as absent).
+_TDP_PRESENT_QUALS = {"eruption_status", "bone_inclusion", "tooth_orientation"}
+_TDP_PRESENT_DEV = {"IncompleteRootFormation", "OpenApex"}
+
+
+def _implies_present(f: Finding) -> str | None:
+    """Kind of present-implying finding, or None."""
+    if f.finding_type == FindingType.RootResidue:
+        return "RootResidue"
+    if f.finding_type == FindingType.ToothDevelopmentPathology:
+        q = f.qualifier_dict()
+        if set(q) & _TDP_PRESENT_QUALS or set(q.get("development_feature", [])) & _TDP_PRESENT_DEV:
+            return "TDP_eruption_development"
+        if q.get("periodontal_feature"):
+            return "TDP_periodontal"
+        if q.get("development_feature"):
+            return "TDP_deciduous_supernumerary"
+        return "TDP_unspecified"
+    return None
+
+
+def absence_conflict_details(findings: list[Finding]) -> list[dict]:
+    """Every tooth a report codes as ToothAbsence AND as a presence-implying finding, with that finding's kind."""
+    absent = {t for f in findings if f.finding_type == FindingType.ToothAbsence for t in f.tooth_ids}
+    out = []
+    for f in findings:
+        kind = f.finding_type.value if f.finding_type.value in TOOTH_PRESENT_TYPES else None
+        if kind == "ToothDevelopmentPathology" or kind == "RootResidue":
+            kind = _implies_present(f)
+        if kind:
+            out += [{"tooth": t, "with": kind} for t in sorted(absent & set(f.tooth_ids))]
+    return out
+
+
+def apply_absence_convention(findings: list[Finding]) -> tuple[list[Finding], int]:
+    """Optional: remove ToothAbsence tooth ids that the same report codes as RootResidue or as eruption /
+    development TDP. A ToothAbsence that had tooth ids and loses all of them is dropped (never falls back to its
+    region). Returns (findings, number of tooth ids removed)."""
+    keep_present = {t for f in findings if _implies_present(f) in ("RootResidue", "TDP_eruption_development")
+                    for t in f.tooth_ids}
+    out, removed = [], 0
+    for f in findings:
+        if f.finding_type == FindingType.ToothAbsence and keep_present & set(f.tooth_ids):
+            teeth = [t for t in f.tooth_ids if t not in keep_present]
+            removed += len(f.tooth_ids) - len(teeth)
+            if not teeth:
+                continue
+            f = f.model_copy(update={"tooth_ids": teeth})
+        out.append(f)
+    return out, removed
 
 
 def absence_conflicts(findings: list[Finding]) -> list[str]:

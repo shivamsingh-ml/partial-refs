@@ -504,3 +504,26 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   case-level counting inferred from the numbers, script not in the submitted code → confirm with Chen). Added
   HANDOFF L14: re-test the silence rules under corrected metrics; compare our tooth-level π with Table S3.
   `reports/LITERATURE_NOVELTY.md` §1b added.
+- **Parser v3.1 (2026-11-10).** Reason: in the v3 run (`results/extract/20261109-1742-42d9d35-parse-qwen3-32b-v3-n0-615200`)
+  toothless arches were coded as a region instead of 16 teeth (17 region mentions on arches the mask shows as
+  toothless; 117 Lumetti absences lost, 98 of them in region cases) and 96 reports had a tooth coded missing AND
+  present. Change: toothless arch/quadrant = all its teeth, "edentulous except X" = all but X, region only for
+  partial edentulism or a sector/saddle/span/area without numbers, whole-arch ridge/jaw = 16 teeth; residual root
+  and impacted tooth are never ToothAbsence; synthetic example 6. Conflicts are RECORDED per kind
+  (`absence_conflict_details`), not resolved: the mask check of conflict teeth showed most are really absent
+  (RootResidue 35 absent / 20 present, periodontal TDP 21 / 6, deciduous 4 / 0, eruption 4 / 4), so automatic
+  removal would be wrong; `apply_absence_convention` exists but is applied nowhere (later sensitivity row). The
+  counts above are ad-hoc checks on the v3 run from this session, not saved as a results file; the post-run
+  checks on v3.1 will write them. JSON schema unchanged from v3. Reviewed twice by an independent agent (GO) and
+  re-verified before submission (102 tests, schema identical to HEAD, token headroom, parquet round trip).
+- **External model may read tune-half report text (Shivam's written confirmation, 2026-11-10).** Terms checked the
+  same day: ODIN 2026 datasets page and the Ditto ToothFairy4 page state CC BY-NC-SA 4.0, sign-up to download and
+  a citation requirement; no separate data-use agreement or clause on third-party processing was found, and the
+  providers themselves state the English reports are gpt-5.2 translations. Not checked by Claude: anything shown
+  at Ditto account creation, and the Claude account's data settings (Shivam's responsibility). Not MedUni Wien
+  data, so no institutional data policy applies (Shivam). Scope: Claude reads report TEXT of the tune half only,
+  for parser error analysis (disagreement-ranked reports first, then a random sample of ~50 agreeing reports,
+  extend to the whole tune half only if that sample shows many hidden errors). Held-out half stays unseen;
+  no images/masks; parser, labels and metrics stay local-model only; report text never in commits, logs, results
+  or prompt examples (examples stay synthetic). The paper states that an external model assisted error analysis
+  during parser development. HANDOFF §0.8 and CLAUDE.md rule 8 updated.
