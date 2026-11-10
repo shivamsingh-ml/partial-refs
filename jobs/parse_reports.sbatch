@@ -19,6 +19,10 @@
 #        sbatch jobs/parse_reports.sbatch 0 en,it         (all reports)
 #        CASE_IDS=P001,P002 sbatch --export=ALL jobs/parse_reports.sbatch 0 en   (only these cases; run dir
 #        and score tags get "-subset"; scored as ONE set, half "all", unless HALVES is given)
+# Qwen3-32B (bf16) does not fit the 40 GB A100 requested above (job 615781: CUDA out of memory at start-up).
+# For 32B pass the 80 GB card on the command line, as in jobs 615200 / 615701:
+#   sbatch --export=ALL --qos=a100-sxm4-80gb --gres=gpu:a100-sxm4-80gb:1 --mem=128G --time=01:00:00 \
+#     jobs/parse_reports.sbatch 5 en,it $PROJECT_DIR/models/Qwen3-32B qwen3-32b-v32
 set -euo pipefail
 PROJECT_DIR=/msc/home/ssingh54/partial-refs; cd "$PROJECT_DIR"
 LIMIT=${1:-5}; LANGS=${2:-en}

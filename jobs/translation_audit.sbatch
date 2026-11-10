@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=pr-transaudit
 #SBATCH --partition=gpu
-#SBATCH --qos=a100
+#SBATCH --qos=a100-sxm4-80gb
 #SBATCH --account=uzk
-#SBATCH --gres=gpu:a100:1
+#SBATCH --gres=gpu:a100-sxm4-80gb:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=01:00:00
