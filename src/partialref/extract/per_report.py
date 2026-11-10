@@ -65,6 +65,13 @@ def request_body(model: str, report_text: str, mode: str, repetition_penalty: fl
 DEFAULT_LADDER = "1.1:0,1.3:0,1.05:0.3"
 
 
+def parse_case_ids(s: str) -> list[str]:
+    ids = [x.strip() for x in s.split(",") if x.strip()]
+    if not ids:                                       # "--case-ids ''" must not turn into a full run
+        raise argparse.ArgumentTypeError("no case id given")
+    return ids
+
+
 def parse_ladder(spec: str) -> list[tuple[float, float]]:
     return [(float(p), float(t)) for p, t in (x.split(":") for x in spec.split(",") if x.strip())]
 
@@ -118,17 +125,22 @@ def _salvage(content: str) -> tuple[ReportExtraction, dict]:
     data = json.loads(content)                           # JSONDecodeError -> report failed
     if not isinstance(data, dict):
         raise TypeError("model output is not a JSON object")
-    good, repaired, dropped = [], 0, 0
+    good, repaired, dropped, why = [], 0, 0, []
+    types = {t.value for t in FindingType}
     for f in data.get("findings") or []:
         fixed = _repair_anchor(f) if isinstance(f, dict) else [f]
         repaired += fixed != [f]
         for g in fixed:
             try:
                 good.append(Finding.model_validate(g))
-            except ValidationError:
-                dropped += 1
+            except ValidationError as e:
+                dropped += 1         # why: type (if a known one) + pydantic messages; never the input values
+                t = g.get("finding_type") if isinstance(g, dict) else None
+                t = t if isinstance(t, str) and t in types else "?"
+                why.append(f"{t}: " + "; ".join(sorted({err["msg"] for err in e.errors()})))
     ext = ReportExtraction(findings=good, not_assessable=data.get("not_assessable") or [])
-    return ext, {"salvaged": True, "repaired_findings": repaired, "dropped_findings": dropped}
+    return ext, {"salvaged": True, "repaired_findings": repaired, "dropped_findings": dropped,
+                 "dropped_reasons": why}
 
 
 def extract_one(server: str, model: str, text: str, mode: str, repetition_penalty: float | None = None,
@@ -184,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", required=True, help="served model name")
     ap.add_argument("--model-path", default="", help="recorded in provenance")
     ap.add_argument("--limit-cases", type=int, default=0)
-    ap.add_argument("--case-ids", type=lambda s: [x for x in s.split(",") if x], default=[])
+    ap.add_argument("--case-ids", type=parse_case_ids, default=[])
     ap.add_argument("--centres", default="PFSA")
     ap.add_argument("--out-dir", type=Path, help="existing run dir to resume")
     ap.add_argument("--results-dir", default=Path("results"), type=Path)
@@ -199,11 +211,16 @@ def main(argv: list[str] | None = None) -> int:
     reps = pd.read_parquet(a.manifest / "reports.parquet")
     reps = reps[(reps["lang"] == a.lang) & reps["case_id"].str[0].isin(list(a.centres))]
     if a.case_ids:
+        unknown = sorted(set(a.case_ids) - set(reps["case_id"]))
+        if unknown:                                   # a typo must not silently shrink the run
+            raise SystemExit(f"--case-ids: {len(unknown)} id(s) without a {a.lang} report, e.g. {unknown[:5]}")
         reps = reps[reps["case_id"].isin(a.case_ids)]
     if a.limit_cases:
         keep = sorted(reps["case_id"].unique())[: a.limit_cases]
         reps = reps[reps["case_id"].isin(keep)]
     reps = reps.sort_values(["case_id", "report_id"])
+    if reps.empty:
+        raise SystemExit("no reports selected")
 
     out = a.out_dir or (a.results_dir / "extract" / make_run_id(f"{a.tag}-{a.lang}"))
     (out / "per_report").mkdir(parents=True, exist_ok=True)
@@ -259,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
         metas = list(ex.map(work, reps.itertuples()))
 
-    rows_inst, rows_na, all_meta = [], [], []
+    rows_inst, rows_na, all_meta, scopes = [], [], [], {}
     for f in sorted((out / "per_report").glob(f"*__{a.lang}.json")):
         d = json.loads(f.read_text())
         all_meta.append(d["meta"])          # coverage = every per-report file in the run, not this call only
@@ -267,6 +284,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
         ext = ReportExtraction.model_validate(d["extraction"])
         m = d["meta"]
+        for fd in ext.findings:              # region-level ToothAbsence by scope (post-run check, v3.2)
+            if fd.region:
+                scopes[fd.region_scope or "unspecified"] = scopes.get(fd.region_scope or "unspecified", 0) + 1
         rows_inst += [{"case_id": c, "report_id": m["report_id"], "lang": a.lang, "finding_type": t, "slot": s}
                       for c, t, s in instances(m["case_id"], ext.findings)]
         rows_na += [{"case_id": m["case_id"], "report_id": m["report_id"], "structure": s}
@@ -282,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
                "n_salvaged": int(meta_df.get("salvaged", pd.Series(dtype=object)).fillna(False).astype(bool).sum()),
                "n_dropped_findings": int(pd.to_numeric(meta_df.get("dropped_findings", pd.Series(dtype=float)),
                                                        errors="coerce").fillna(0).sum()),
+               "absence_regions_by_scope": scopes,
                "n_reports_with_absence_conflicts": int((pd.to_numeric(meta_df.get(
                    "absence_conflicts", pd.Series(dtype=float)), errors="coerce").fillna(0) > 0).sum()),
                "retry_settings_used": pd.Series([

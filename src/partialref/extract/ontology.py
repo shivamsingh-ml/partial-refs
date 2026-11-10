@@ -9,6 +9,10 @@ cited, files not copied: the repository states no licence). Additions of ours:
   ("partial edentulism of the upper arch"). Its slot is "region:<Region>"; it counts at type level. In the
   propensity model (main analysis) the unnamed teeth of the region count as not mentioned (tooth-level
   completeness of the reference); secondary analysis: that reader is uninformative for them.
+- ``region_scope`` / ``remaining_tooth_ids`` (parser v3.2, 2026-11-10): a WHOLE arch or quadrant without teeth
+  is stated by the model as region + "AllMissing" (+ the teeth named as the only ones remaining); the tooth
+  list is then filled in HERE, by code (the model made errors when it had to list 14-16 teeth or a complement).
+  "SomeMissing" (or no scope) keeps the region slot as before.
 Negative statements ("no caries") produce no finding, as in the original ontology.
 
 Each finding has exactly one type and is anchored to a *slot*: FDI tooth ids, a side, or a
@@ -122,6 +126,7 @@ Qualifiers = create_model(
 
 FDIStr = Annotated[str, StringConstraints(pattern=FDI_RE.pattern)]
 Region = Literal["UpperArch", "LowerArch", "QuadrantI", "QuadrantII", "QuadrantIII", "QuadrantIV"]
+RegionScope = Literal["AllMissing", "SomeMissing"]
 REGION_PREFIX = "region:"
 _PERM = {q: [f"{q}{i}" for i in range(1, 9)] for q in "1234"}
 REGION_TEETH: dict[str, list[str]] = {
@@ -139,9 +144,11 @@ class Finding(BaseModel):
     side: Side | None = None
     quadrant: Quadrant | None = None
     region: Region | None = None
+    region_scope: RegionScope | None = None                     # ToothAbsence with a region only
+    remaining_tooth_ids: list[FDIStr] = Field(default_factory=list)   # with AllMissing: teeth still present
     qualifiers: Qualifiers = Field(default_factory=Qualifiers)  # type: ignore[valid-type]
 
-    @field_validator("tooth_ids")
+    @field_validator("tooth_ids", "remaining_tooth_ids")
     @classmethod
     def _fdi(cls, v: list[str]) -> list[str]:
         return sorted(set(map(str, v)))
@@ -154,6 +161,15 @@ class Finding(BaseModel):
         kind = slot_kind(self.finding_type)
         if self.finding_type != FindingType.ToothAbsence and self.region is not None:
             self.region = None                 # region is only meaningful for ToothAbsence
+        if self.region is None:
+            self.region_scope, self.remaining_tooth_ids = None, []
+        elif self.region_scope == "AllMissing":
+            # whole region without teeth: every tooth of it except those named as remaining. Filled in by
+            # code; region / scope / remaining stay as the model gave them (idempotent on re-validation).
+            missing = set(REGION_TEETH[self.region]) - set(self.remaining_tooth_ids)
+            if not missing:
+                raise ValueError("ToothAbsence AllMissing with every tooth of the region remaining")
+            self.tooth_ids = sorted(set(self.tooth_ids) | missing)
         if kind == "tooth" and not self.tooth_ids and not (
                 self.finding_type == FindingType.ToothAbsence and self.region is not None):
             raise ValueError(f"{self.finding_type.value} needs tooth_ids")
@@ -233,7 +249,11 @@ def apply_absence_convention(findings: list[Finding]) -> tuple[list[Finding], in
             removed += len(f.tooth_ids) - len(teeth)
             if not teeth:
                 continue
-            f = f.model_copy(update={"tooth_ids": teeth})
+            upd = {"tooth_ids": teeth}
+            if f.region_scope == "AllMissing":      # else re-validation would add the removed teeth back
+                upd["remaining_tooth_ids"] = sorted(set(f.remaining_tooth_ids)
+                                                    | (keep_present & set(REGION_TEETH[f.region])))
+            f = f.model_copy(update=upd)
         out.append(f)
     return out, removed
 

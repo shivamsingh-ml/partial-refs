@@ -31,8 +31,11 @@ TYPES = {t.value for t in FindingType}
 TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
 RUN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,150}$")
 # anchors exactly as data.finding_rows builds them: tooth ids, a side, a quadrant or a region
+# (v3.2: a region may carry " AllMissing" and the remaining teeth)
 _Q = r"Quadrant(?:I|II|III|IV)"
-ANCHOR_RE = re.compile(rf"^(?:\d{{2}}(?:, \d{{2}})*|Left|Right|{_Q}|region (?:UpperArch|LowerArch|{_Q}))?$")
+_IDS = r"\d{2}(?:, \d{2}){0,51}"       # at most 32 permanent + 20 primary teeth
+ANCHOR_RE = re.compile(rf"^(?:{_IDS}|Left|Right|{_Q}|region (?:UpperArch|LowerArch|{_Q})"
+                       rf"(?: AllMissing(?: \(remaining {_IDS}\))?)?)?$")
 
 
 def _str(x, allowed=None, pattern=None) -> bool:

@@ -11,7 +11,11 @@ arches) were measured from their released labels. v3 (2026-11-09): tooth abbrevi
 statements, ranges through the midline, region-level missing teeth, absence/presence conflicts — all from
 our own error analysis (counts only), example 5 written from scratch. v3.1 (2026-11-10): toothless arch or
 quadrant = all its teeth, region only for partial edentulism without numbers; residual root / impacted tooth are
-never ToothAbsence; example 6 (toothless jaw next to partial edentulism) written from scratch. Their repository states no licence: none of their
+never ToothAbsence; example 6 (toothless jaw next to partial edentulism) written from scratch. v3.2
+(2026-11-10, after reading tune-half reports for error analysis; wording patterns only, no report text): the
+model no longer lists the teeth of a toothless arch (region + region_scope "AllMissing" + remaining_tooth_ids,
+expanded by code); tooth groups and "distal to" are identified teeth; scan-coverage wording is not edentulism;
+examples 7 and 8 written from scratch. Their repository states no licence: none of their
 files (code, prompts, examples) were opened or copied; this prompt and its examples are our own.
 """
 
@@ -25,17 +29,35 @@ SYSTEM_PROMPT = f"""You convert ONE dental CBCT radiology report into structured
 Return only JSON that matches the given schema: {{"findings": [...], "not_assessable": [...]}}.
 
 Finding types (choose exactly one per finding) and their anchor:
-- ToothAbsence (tooth_ids, or region): a tooth the report says is MISSING (absent, missing, extracted,
-  lost, agenesis, edentulous / edentulism of that tooth or area), including pontic positions of a bridge.
-  An arch or quadrant the report calls edentulous / toothless / without teeth, with no remaining tooth
-  named for it ("edentulous lower arch", "edentulous mandible", "edentulous maxilla", "toothless upper
-  jaw") = ToothAbsence with ALL its tooth_ids: 16 for an arch (11-18 and 21-28, or 31-38 and 41-48), 8 for
-  a quadrant; "edentulous except 33 and 43" = all its teeth EXCEPT those named as remaining. "region"
-  (UpperArch, LowerArch, QuadrantI-IV, NO tooth_ids) is ONLY for SOME missing teeth stated without numbers
-  ("partially edentulous", "edentulous gaps", "some missing elements", "partial edentulism", and an
-  edentulous sector / saddle / span / area without numbers: the quadrant if the side is given, else the
-  arch); never list all teeth for these, never guess numbers. An edentulous ridge or jaw of a WHOLE arch
-  ("edentulous mandibular ridge", "edentulous maxillary ridge") is the whole arch (all 16 teeth).
+- ToothAbsence (tooth_ids, or region): teeth the report says are MISSING (absent, missing, extracted,
+  lost, agenesis, edentulous / edentulism), including pontic positions of a bridge. Code each statement
+  in the FIRST of these three ways that fits:
+  (1) The report identifies the missing teeth -> tooth_ids, NO region. Identified = tooth numbers
+      ("edentulism involving 36 and 46" = 36, 46), a range, an edentulous saddle / site / span "distal
+      to" a tooth (= every tooth behind it in that quadrant: "distal to 45" = 46, 47, 48), or a WHOLE
+      tooth group with its side stated (q = quadrant digit): incisor sector = q1, q2; canine = q3;
+      premolar sector = q4, q5; molar sector = q6, q7, q8; "bilaterally" / "on both sides" = both
+      quadrants of that jaw ("edentulism of the mandibular molar sectors bilaterally" = 36, 37, 38, 46,
+      47, 48).
+  (2) A WHOLE arch or quadrant is without teeth -> region (UpperArch, LowerArch, QuadrantI-IV) with
+      region_scope "AllMissing" and NO tooth_ids (never list its teeth yourself): "complete edentulism",
+      "edentulous mandible / maxilla", "edentulous mandibular ridge", "toothless upper jaw". If the
+      report names the ONLY teeth still present there ("only 33 and 43 remain", "near-total edentulism,
+      44 and 45 are the only teeth present", "all other mandibular teeth are absent"), use the same
+      coding and put those teeth in remaining_tooth_ids. Every tooth of that arch / quadrant for which
+      the report gives a tooth finding (caries, filling, root canal filling, periapical lesion, residual
+      root, impacted / unerupted tooth) is NOT missing and also goes in remaining_tooth_ids; implant
+      positions and bridge pontics do not (those teeth are missing).
+  (3) SOME teeth are missing but the report does not identify them -> region with region_scope
+      "SomeMissing" and NO tooth_ids: "partial edentulism", "near-total edentulism" with no tooth
+      named, "some missing elements", an edentulous posterior / lateral / anterior sector, saddle or
+      area without a tooth group or number, a tooth-group sector that is only PARTLY edentulous
+      ("partial edentulism of the right molar sector") or has no side stated. Use the quadrant if one
+      side is stated, else the arch. Never guess numbers.
+  Under a heading or in a sentence about one jaw ("Mandible: ... Complete edentulism."), the statement
+  is about that jaw only. Each statement is coded ONCE: teeth given as tooth_ids get no additional
+  region, and a later mention of "the edentulous areas" (e.g. atrophy there) adds nothing. "Partially
+  included / partially visible in the scan" describes the SCAN, not the teeth: never ToothAbsence.
   NOT for impacted/unerupted teeth (ToothDevelopmentPathology), NOT where a root residue remains
   (RootResidue), and NEVER for teeth or arches that are not visible / not included in the scan.
 - ToothDevelopmentPathology (tooth_ids): (a) impacted, semi-included, unerupted, ectopic,
@@ -71,8 +93,8 @@ Rules:
   -> 14, 15, 16; a range across the midline runs through it: "from 33 to 43" -> 33, 32, 31, 41, 42, 43.
 - "e.d.", "el.", "elemento dentario", "elementi dentari" (Italian, sometimes left untranslated) mean
   TOOTH / TEETH. "e.d." NEVER means edentulous.
-- Statements that teeth ARE PRESENT ("teeth present from 37 to 47", "complete dentition") produce NO
-  finding.
+- Statements that teeth ARE PRESENT ("teeth present from 37 to 47", "complete dentition", "tooth 18 is
+  in the arch") produce NO finding.
 - A tooth called missing cannot also have caries, a restoration, a root canal treatment, a periapical
   lesion, a root residue or a development pathology in the same report: if both seem to apply, re-read
   the report; list the tooth as missing only if the report explicitly says so. A residual root is
@@ -157,8 +179,7 @@ FEWSHOT = [
         "placement. Maxillary sinuses well aerated. Condyles symmetric and regular. The right "
         "mandibular canal runs superficially below the ridge in the region of 45 and 46.",
         {"findings": [
-            {"finding_type": "ToothAbsence", "tooth_ids": ["31", "32", "33", "34", "35", "36", "37", "38",
-                                                           "41", "42", "43", "44", "45", "46", "47", "48"]},
+            {"finding_type": "ToothAbsence", "region": "LowerArch", "region_scope": "AllMissing"},
             {"finding_type": "JawAtrophy", "quadrant": "QuadrantIII", "qualifiers": {"severity": ["Severe"]}},
             {"finding_type": "JawAtrophy", "quadrant": "QuadrantIV", "qualifiers": {"severity": ["Severe"]}},
             {"finding_type": "ToothAbsence", "tooth_ids": ["17", "27"]},
@@ -179,7 +200,7 @@ FEWSHOT = [
                             "development_feature": ["IncompleteRootFormation"]}},
             {"finding_type": "ToothAbsence", "tooth_ids": ["48"]},
             {"finding_type": "ConservativeRestoration", "tooth_ids": ["46"]},
-            {"finding_type": "ToothAbsence", "region": "UpperArch"},
+            {"finding_type": "ToothAbsence", "region": "UpperArch", "region_scope": "SomeMissing"},
             {"finding_type": "EndodonticTreatment", "tooth_ids": ["22"],
              "qualifiers": {"treatment_quality": ["DoesNotReachApex"]}}],
          "not_assessable": ["condyle_left", "condyle_right"]},
@@ -188,15 +209,57 @@ FEWSHOT = [
         "Edentulous maxilla with severe resorption of the alveolar ridge in both posterior sectors. Mandible: "
         "partially edentulous, residual root of 36, teeth 33 and 43 with composite restorations; impacted 38.",
         {"findings": [
-            {"finding_type": "ToothAbsence", "tooth_ids": ["11", "12", "13", "14", "15", "16", "17", "18",
-                                                           "21", "22", "23", "24", "25", "26", "27", "28"]},
+            {"finding_type": "ToothAbsence", "region": "UpperArch", "region_scope": "AllMissing"},
             {"finding_type": "JawAtrophy", "quadrant": "QuadrantI", "qualifiers": {"severity": ["Severe"]}},
             {"finding_type": "JawAtrophy", "quadrant": "QuadrantII", "qualifiers": {"severity": ["Severe"]}},
-            {"finding_type": "ToothAbsence", "region": "LowerArch"},
+            {"finding_type": "ToothAbsence", "region": "LowerArch", "region_scope": "SomeMissing"},
             {"finding_type": "RootResidue", "tooth_ids": ["36"]},
             {"finding_type": "ConservativeRestoration", "tooth_ids": ["33", "43"]},
             {"finding_type": "ToothDevelopmentPathology", "tooth_ids": ["38"],
              "qualifiers": {"eruption_status": ["Impacted"]}}],
+         "not_assessable": []},
+    ),
+    (
+        "MANDIBLE: included in the scan. Near-total edentulism: only teeth 33 and 34 are present, 34 with a "
+        "prosthetic crown. Severe atrophy of the ridge on both sides. Right mandibular canal with a regular "
+        "course, left canal predominantly lingual. MAXILLA: only partially included in the scan volume. "
+        "Edentulism involving teeth 15 and 25. Tooth 18 is in the arch, tooth 28 is impacted. Composite "
+        "restorations on 16 and 26. CONDYLES: not included in the scan.",
+        {"findings": [
+            {"finding_type": "ToothAbsence", "region": "LowerArch", "region_scope": "AllMissing",
+             "remaining_tooth_ids": ["33", "34"]},
+            {"finding_type": "ProstheticDevice", "tooth_ids": ["34"],
+             "qualifiers": {"prosthesis_type": ["Crown"]}},
+            {"finding_type": "JawAtrophy", "quadrant": "QuadrantIII", "qualifiers": {"severity": ["Severe"]}},
+            {"finding_type": "JawAtrophy", "quadrant": "QuadrantIV", "qualifiers": {"severity": ["Severe"]}},
+            {"finding_type": "MandibularCanalCourse", "side": "Right",
+             "qualifiers": {"canal_trajectory": ["Regular"]}},
+            {"finding_type": "MandibularCanalCourse", "side": "Left",
+             "qualifiers": {"canal_trajectory": ["PrevalentlyLingual"]}},
+            {"finding_type": "ToothAbsence", "tooth_ids": ["15", "25"]},
+            {"finding_type": "ToothDevelopmentPathology", "tooth_ids": ["28"],
+             "qualifiers": {"eruption_status": ["Impacted"]}},
+            {"finding_type": "ConservativeRestoration", "tooth_ids": ["16", "26"]}],
+         "not_assessable": ["maxilla", "condyle_left", "condyle_right"]},
+    ),
+    (
+        "Lower jaw: edentulous saddle distal to 35; on the right, edentulism of the molar sector with "
+        "moderate atrophy. Root canal filling in 45 reaching the apex. Both mandibular canals follow a "
+        "regular course. Upper jaw: complete edentulism; residual root of 17; implants in positions "
+        "13 and 23.",
+        {"findings": [
+            {"finding_type": "ToothAbsence", "tooth_ids": ["36", "37", "38", "46", "47", "48"]},
+            {"finding_type": "JawAtrophy", "quadrant": "QuadrantIV", "qualifiers": {"severity": ["Moderate"]}},
+            {"finding_type": "EndodonticTreatment", "tooth_ids": ["45"],
+             "qualifiers": {"treatment_quality": ["ReachesApex"]}},
+            {"finding_type": "MandibularCanalCourse", "side": "Left",
+             "qualifiers": {"canal_trajectory": ["Regular"]}},
+            {"finding_type": "MandibularCanalCourse", "side": "Right",
+             "qualifiers": {"canal_trajectory": ["Regular"]}},
+            {"finding_type": "ToothAbsence", "region": "UpperArch", "region_scope": "AllMissing",
+             "remaining_tooth_ids": ["17"]},
+            {"finding_type": "RootResidue", "tooth_ids": ["17"]},
+            {"finding_type": "DentalImplant", "tooth_ids": ["13", "23"]}],
          "not_assessable": []},
     ),
 ]

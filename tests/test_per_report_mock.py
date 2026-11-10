@@ -61,6 +61,7 @@ def test_parser_end_to_end(tmp_path, server):
                             "--out-dir", str(out), "--workers", "2"]) == 0
     s = json.loads((out / "summary_en.json").read_text())
     assert s["mode"] == "structured_outputs" and s["n_reports"] == 3 and s["n_errors"] == 0
+    assert s["absence_regions_by_scope"] == {}
     inst = pd.read_parquet(out / "instances_en.parquet")
     assert set(inst["finding_type"]) == {"DentalImplant", "Caries"} and len(inst) == 9   # 3 slots x 3 reports
     assert len(pd.read_parquet(out / "not_assessable_en.parquet")) == 3
@@ -70,6 +71,16 @@ def test_parser_end_to_end(tmp_path, server):
     per_report.main(["--manifest", str(man), "--lang", "en", "--server", server, "--model", "fake",
                      "--out-dir", str(out), "--workers", "2"])
     assert len(FakeVLLM.seen) - n_calls <= 2
+    # --case-ids: ids are stripped; an unknown id or an empty selection stops before any request
+    sub_out, n_calls = tmp_path / "sub", len(FakeVLLM.seen)
+    base = ["--manifest", str(man), "--lang", "en", "--server", server, "--model", "fake", "--out-dir", str(sub_out)]
+    for extra in (["--case-ids", "P001,P999"], ["--case-ids", " , "], ["--centres", "X"]):
+        with pytest.raises(SystemExit):
+            per_report.main(base + extra)
+    assert len(FakeVLLM.seen) == n_calls and not sub_out.exists()
+    assert per_report.main(base + ["--case-ids", "P001, A003 "]) == 0
+    assert json.loads((sub_out / "summary_en.json").read_text())["n_reports"] == 3
+    assert per_report.main(base + ["--case-ids", "A003"]) == 0                 # same dir: summary covers all files
     # no report text in any output file
     for f in out.rglob("*"):
         if f.is_file() and f.suffix in {".json", ".parquet"}:
@@ -118,11 +129,18 @@ def test_salvage_schema_valid_but_invalid_findings():
     slots = {(f.finding_type.value, s) for f in ext.findings for s in f.slots()}
     assert slots == {("MandibularCanalCourse", "Left"), ("MandibularCanalCourse", "Right"),
                      ("JawAtrophy", "QuadrantIV"), ("Caries", "36")}
-    assert info == {"salvaged": True, "repaired_findings": 2, "dropped_findings": 1}
+    assert info == {"salvaged": True, "repaired_findings": 2, "dropped_findings": 1,
+                    "dropped_reasons": ["ToothAbsence: Value error, ToothAbsence needs tooth_ids"]}
     canal = {f.side: f.tooth_ids for f in ext.findings if f.finding_type.value == "MandibularCanalCourse"}
     assert canal == {"Left": ["38"], "Right": ["48"]}                 # tooth ids split per derived side
     ok, info_ok = per_report.parse_extraction(json.dumps(ANSWER))
     assert info_ok == {"salvaged": False} and len(ok.findings) == 2
+    # a finding_type that is not a string is dropped with reason "?", not a crash; no input value in the reason
+    odd = {"findings": [{"finding_type": {"x": "free text"}, "tooth_ids": ["36"]},
+                        {"finding_type": "Caries", "tooth_ids": ["36"]}], "not_assessable": []}
+    ext2, info2 = per_report.parse_extraction(json.dumps(odd))
+    assert len(ext2.findings) == 1 and info2["dropped_findings"] == 1
+    assert info2["dropped_reasons"][0].startswith("?: ") and "free text" not in info2["dropped_reasons"][0]
     with pytest.raises(json.JSONDecodeError):
         per_report.parse_extraction('{"findings": [{"finding_type": "Caries", "tooth_ids": ["36"')
 

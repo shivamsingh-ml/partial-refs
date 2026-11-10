@@ -527,3 +527,38 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   no images/masks; parser, labels and metrics stay local-model only; report text never in commits, logs, results
   or prompt examples (examples stay synthetic). The paper states that an external model assisted error analysis
   during parser development. HANDOFF §0.8 and CLAUDE.md rule 8 updated.
+- **Parser v3.2 (2026-11-10).** Reason: v3.1 (job 615640, cancelled after the EN pass,
+  `results/extract/20261110-1548-42c1f97-parse-qwen3-32b-v31-n0-615640`; evidence, codes only, in its `diagnosis/`
+  folder) did not improve ToothAbsence against Lumetti's labels (slot F1, tune half: v3 0.784, v3.1 0.782) and
+  coded more arches as a region instead of teeth (lower arch as region: 19 reports in v3, 54 in v3.1; upper 27
+  and 29; all 1,000 EN reports, `transitions_lower.csv` / `transitions_upper.csv`).
+  Causes, found by reading tune-half report text next to the codes, the masks and Lumetti's labels: (1) scan
+  coverage wording ("maxilla partially included") gave a region (140 tune reports with that wording and no
+  edentul* word: 0 region codes in v3, 11 in v3.1); (2) "complete edentulism" with the jaw only in the section
+  heading gave a region instead of 16 teeth; (3) "only tooth X present" gave a region instead of all other
+  teeth; (4) edentulous tooth-group sectors on both sides gave one arch region; (5) "edentulous saddle distal to
+  X" gave an arch region; (6) numbered missing teeth got an extra region. Change: the model no longer writes out
+  a toothless arch. It states `region` + `region_scope` (AllMissing | SomeMissing) + `remaining_tooth_ids`, and
+  the code fills `tooth_ids` for AllMissing (teeth of the region minus the remaining ones). SomeMissing, or a
+  region without scope (all v3 / v3.1 files), stays a region slot, so stored runs validate unchanged.
+  Conventions: a whole tooth-group sector with its side stated (incisor x1-x2, canine x3, premolar x4-x5, molar
+  x6-x8) and "distal to X" are identified teeth, third molars included (as in Lumetti's labels and the masks on
+  the tune cases read); a partly edentulous sector, an anterior / posterior / lateral sector and a tooth group
+  without a side are SomeMissing; inside an AllMissing region every tooth with a tooth-present finding (caries,
+  filling, root canal filling, periapical lesion, residual root, impacted tooth) is a remaining tooth, implant
+  positions and pontics are not; scan-coverage wording is never ToothAbsence. Synthetic examples 7 and 8 added,
+  4-6 state the scope. Also: `dropped_reasons` per report (finding type + validator message, never input values),
+  `absence_regions_by_scope` in the run summary, `CASE_IDS` in `jobs/parse_reports.sbatch` (run dir and score
+  tags get `-subset`; an unknown or empty id list stops the run), review app shows an AllMissing finding as the
+  statement instead of 14-16 teeth. Independent review: GO for the tune-half run; its should-fix points
+  (partly edentulous sector, teeth with findings in a toothless arch, optional convention surviving
+  re-validation, subset labelling, review-app anchor) are fixed. Left open for the post-run check: third-molar
+  false positives of the sector / distal rules, AllMissing arches against the masks, a tooth in both `tooth_ids`
+  and `remaining_tooth_ids`, example key order, "maxilla" in not_assessable for a partly included maxilla
+  (not used for π). Next: tune half, English only (312 cases, 508 reports), compared with v3 and v3.1 on the
+  same cases; the full run only if that is clearly better.
+- **Ontology: stay on Lumetti's finding types as they are (Shivam, 2026-11-10).** No own or extended ontology and
+  no derived views (ToothDevelopmentPathology split, lesion merge, prosthetic split, explicit negatives) for
+  now. Reason: comparability with the published labels and the challenge metric, and defensibility; a derived
+  view would only help if sub-type π differ or cross-type mismatches are common, which is not measured. A cheap
+  CPU check of both is planned after the parser is frozen; nothing changes before that.

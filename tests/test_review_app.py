@@ -83,6 +83,18 @@ def test_data_helpers(setup):
     fr = finding_rows({"findings": [{"finding_type": "ToothAbsence", "region": "UpperArch"},
                                     {"finding_type": "Caries", "tooth_ids": ["36"], "qualifiers": {"severity": ["Mild"]}}]})
     assert fr["anchor"].tolist() == ["region UpperArch", "36"] and fr["qualifiers"].iloc[1] == "severity=Mild"
+    # v3.2: an AllMissing region (tooth ids filled in by code) is shown as the statement, and import accepts it
+    from partialref.extract.ontology import Finding
+    from partialref.review.import_log import ANCHOR_RE
+    dumps = [Finding(finding_type="ToothAbsence", region="LowerArch", region_scope="AllMissing",
+                     remaining_tooth_ids=r).model_dump(mode="json") for r in ([], ["33", "43"])]
+    dumps.append(Finding(finding_type="ToothAbsence", region="QuadrantII", region_scope="SomeMissing").model_dump(mode="json"))
+    dumps.append({"finding_type": "ToothAbsence", "tooth_ids": [f"{q}{i}" for q in "1234" for i in range(1, 9)]})
+    anchors = finding_rows({"findings": dumps})["anchor"].tolist()
+    assert anchors[:3] == ["region LowerArch AllMissing", "region LowerArch AllMissing (remaining 33, 43)",
+                           "region QuadrantII"]
+    assert all(ANCHOR_RE.match(x) and len(x) <= 210 for x in anchors)
+    assert not ANCHOR_RE.match("region LowerArch AllMissing (remaining free text)")
 
 
 def test_bundle_local_mode_and_import_round_trip(setup, tmp_path, monkeypatch):

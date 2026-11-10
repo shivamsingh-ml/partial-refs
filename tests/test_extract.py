@@ -131,17 +131,71 @@ def test_region_level_absence_and_conflicts():
     assert absence_conflicts(f) == ["37"]
 
 
+def test_region_scope_expanded_by_code():
+    """v3.2: a toothless arch / quadrant is stated as region + AllMissing; the tooth list is filled in by code."""
+    from partialref.extract.ontology import REGION_TEETH, absence_conflict_details
+    full = Finding(finding_type="ToothAbsence", region="LowerArch", region_scope="AllMissing")
+    assert full.tooth_ids == sorted(REGION_TEETH["LowerArch"]) and len(full.slots()) == 16
+    assert (full.region, full.region_scope) == ("LowerArch", "AllMissing")          # statement kept as given
+    exc = Finding(finding_type="ToothAbsence", region="LowerArch", region_scope="AllMissing",
+                  remaining_tooth_ids=["43", "33", "11"])                           # 11 is outside: no effect
+    assert len(exc.tooth_ids) == 14 and not {"33", "43"} & set(exc.tooth_ids)
+    assert Finding(finding_type="ToothAbsence", region="QuadrantII", region_scope="AllMissing").tooth_ids == \
+        REGION_TEETH["QuadrantII"]
+    again = Finding.model_validate(exc.model_dump(mode="json"))                     # stored result re-read
+    assert again.tooth_ids == exc.tooth_ids and again.remaining_tooth_ids == ["11", "33", "43"]
+    some = Finding(finding_type="ToothAbsence", region="UpperArch", region_scope="SomeMissing",
+                   remaining_tooth_ids=["13"])
+    assert some.slots() == ["region:UpperArch"] and some.tooth_ids == []            # never expanded
+    assert Finding(finding_type="ToothAbsence", region="UpperArch").slots() == ["region:UpperArch"]   # v3 files
+    with pytest.raises(ValidationError):                                           # contradictory statement
+        Finding(finding_type="ToothAbsence", region="QuadrantI", region_scope="AllMissing",
+                remaining_tooth_ids=REGION_TEETH["QuadrantI"])
+    off = Finding(finding_type="Caries", tooth_ids=["36"], region="LowerArch", region_scope="AllMissing",
+                  remaining_tooth_ids=["33"])
+    assert (off.region, off.region_scope, off.remaining_tooth_ids, off.tooth_ids) == (None, None, [], ["36"])
+    lone = Finding(finding_type="ToothAbsence", tooth_ids=["17"], region_scope="AllMissing")   # scope without region
+    assert lone.region_scope is None and lone.tooth_ids == ["17"]
+    # a residual root the model did not list as remaining is recorded as a conflict, as before
+    conf = absence_conflict_details([full, Finding(finding_type="RootResidue", tooth_ids=["31"])])
+    assert conf == [{"tooth": "31", "with": "RootResidue"}]
+    props = json_schema()["$defs"]["Finding"]["properties"]
+    assert "region_scope" in props and "remaining_tooth_ids" in props
+    # tooth ids the model adds to an AllMissing region are kept (union), and instances() gives teeth, no region
+    both = Finding(finding_type="ToothAbsence", region="QuadrantI", region_scope="AllMissing", tooth_ids=["21"])
+    assert both.tooth_ids == sorted(REGION_TEETH["QuadrantI"] + ["21"])
+    assert {s for _, _, s in instances("P001", [exc])} == set(exc.tooth_ids)
+    # optional convention: a removed tooth stays removed when the stored finding is validated again
+    from partialref.extract.ontology import apply_absence_convention
+    fixed, n = apply_absence_convention([full, Finding(finding_type="RootResidue", tooth_ids=["31"])])
+    assert n == 1 and "31" not in fixed[0].tooth_ids and fixed[0].remaining_tooth_ids == ["31"]
+    back = Finding.model_validate(fixed[0].model_dump(mode="json"))
+    assert back.tooth_ids == fixed[0].tooth_ids and len(back.tooth_ids) == 15
+
+
 def test_prompt_v3_rules_present():
-    for phrase in ('"e.d." NEVER means edentulous', "ARE PRESENT", "through it", '"region"',
-                   "16 for an arch", "ONLY for SOME missing teeth", "neither is ToothAbsence",
-                   "EXCEPT those named as remaining", "sector / saddle / span / area",
-                   "edentulous ridge or jaw of a WHOLE arch"):
-        assert phrase in SYSTEM_PROMPT
-    ex = [o for _, o in FEWSHOT if any(f.get("region") for f in o["findings"])]
-    assert len(ex) == 2 and all(ReportExtraction.model_validate(e) for e in ex)
-    # every example that calls an arch edentulous lists all 16 teeth (v3.1 regression guard)
-    full = [o for t, o in FEWSHOT if "Edentulous maxilla" in t or "Edentulous lower arch" in t]
-    assert len(full) == 2 and all(any(len(f.get("tooth_ids", [])) == 16 for f in o["findings"]) for o in full)
+    flat = " ".join(SYSTEM_PROMPT.split())                            # independent of line wraps
+    for phrase in ('"e.d." NEVER means edentulous', "ARE PRESENT", "through it", "neither is ToothAbsence",
+                   'region_scope "AllMissing"', 'region_scope "SomeMissing"', "remaining_tooth_ids",
+                   "never list its teeth yourself", '"distal to 45" = 46, 47, 48', "molar sector = q6, q7, q8",
+                   "a WHOLE tooth group with its side stated", "only PARTLY edentulous", "has no side stated",
+                   "is NOT missing and also goes in remaining_tooth_ids", "implant positions and bridge pontics do not",
+                   "describes the SCAN, not the teeth", "coded ONCE", "in the arch", "Never guess numbers"):
+        assert phrase in flat, phrase
+    outs = [ReportExtraction.model_validate(o) for _, o in FEWSHOT]
+    regions = [f for e in outs for f in e.findings if f.region]
+    assert all(f.region_scope for f in regions)                       # every example region states its scope
+    assert sorted(f.region_scope for f in regions) == ["AllMissing"] * 4 + ["SomeMissing"] * 2
+    # no example lets the MODEL write out a whole arch (v3.2: code does it), and the expansion is right
+    assert max(len(f.get("tooth_ids", [])) for _, o in FEWSHOT for f in o["findings"]) <= 6
+    assert sorted(len(f.tooth_ids) for f in regions if f.region_scope == "AllMissing") == [14, 15, 16, 16]
+    # a residual root inside a toothless arch is a remaining tooth; implants there are not: no example conflicts
+    from partialref.extract.ontology import absence_conflict_details
+    assert any(f.remaining_tooth_ids == ["17"] for f in regions)
+    assert all(absence_conflict_details(e.findings) == [] for e in outs)
+    # scan-coverage wording next to a dentate arch: that example has no upper-arch region
+    cov = [e for (t, _), e in zip(FEWSHOT, outs) if "partially included in the scan" in t]
+    assert len(cov) == 1 and not any(f.region == "UpperArch" for f in cov[0].findings)
 
 
 def test_score_excludes_region_slots_vs_lumetti(tmp_path):

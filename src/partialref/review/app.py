@@ -157,7 +157,7 @@ def log_form(log_dir: Path, a: argparse.Namespace, case: str, report_id: str, ha
             v = c1.selectbox(f"{f.finding_type} · {f.anchor}", ["—"] + VERDICTS, key=f"v-{case}-{report_id}-{f.idx}")
             cs = c2.selectbox("correct slot (if wrong_slot)", ["—"] + SLOT_CHOICES, key=f"s-{case}-{report_id}-{f.idx}")
             if v != "—":
-                verdicts.append({"idx": f.idx, "finding_type": f.finding_type, "anchor": f.anchor[:100],
+                verdicts.append({"idx": f.idx, "finding_type": f.finding_type, "anchor": f.anchor[:210],
                                  "verdict": v, "correct_slot": None if cs == "—" else cs})
         st.markdown("Findings the parser missed (up to 3)")
         missed = []

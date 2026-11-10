@@ -36,11 +36,16 @@ def load_parse(parse_run: Path, case_id: str, report_id: str, lang: str) -> dict
 
 
 def finding_rows(extraction: dict | None) -> pd.DataFrame:
-    """One row per parsed finding, anchor written as the model gave it."""
+    """One row per parsed finding, anchor written as the model gave it (v3.2: an AllMissing region is shown
+    as the region statement plus the remaining teeth)."""
     rows = []
     for i, f in enumerate((extraction or {}).get("findings", [])):
-        anchor = (", ".join(f.get("tooth_ids") or []) or f.get("side") or f.get("quadrant")
-                  or (f"region {f['region']}" if f.get("region") else ""))
+        if f.get("region") and f.get("region_scope") == "AllMissing":     # tooth_ids were filled in by code
+            rem = ", ".join(f.get("remaining_tooth_ids") or [])
+            anchor = f"region {f['region']} AllMissing" + (f" (remaining {rem})" if rem else "")
+        else:
+            anchor = (", ".join(f.get("tooth_ids") or []) or f.get("side") or f.get("quadrant")
+                      or (f"region {f['region']}" if f.get("region") else ""))
         quals = "; ".join(f"{k}={'/'.join(v)}" for k, v in (f.get("qualifiers") or {}).items() if v)
         rows.append({"idx": i, "finding_type": f["finding_type"], "anchor": anchor, "qualifiers": quals})
     return pd.DataFrame(rows, columns=["idx", "finding_type", "anchor", "qualifiers"])

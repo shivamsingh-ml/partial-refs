@@ -17,6 +17,8 @@
 #   e.g. sbatch jobs/parse_reports.sbatch 5 en            (diagnostic)
 #        REPEAT=1 sbatch --export=ALL jobs/parse_reports.sbatch 50 en,it   (subset + IT + run-to-run check)
 #        sbatch jobs/parse_reports.sbatch 0 en,it         (all reports)
+#        CASE_IDS=P001,P002 sbatch --export=ALL jobs/parse_reports.sbatch 0 en   (only these cases; run dir
+#        and score tags get "-subset"; scored as ONE set, half "all", unless HALVES is given)
 set -euo pipefail
 PROJECT_DIR=/msc/home/ssingh54/partial-refs; cd "$PROJECT_DIR"
 LIMIT=${1:-5}; LANGS=${2:-en}
@@ -25,11 +27,16 @@ MANIFEST=results/manifest/20261107-1830-c2aa718-manifest
 LUMETTI=$(ls -d results/lumetti/*-lumetti-labels | tail -1)/instances.parquet
 EXCLUDE=P116,P117,P260,P261
 PORT=$((21000 + SLURM_JOB_ID % 9000))
-RUN=results/extract/$(date +%Y%m%d-%H%M)-$(git rev-parse --short HEAD)-parse-${NAME}-n${LIMIT}-${SLURM_JOB_ID}
+if [[ -n "${CASE_IDS:-}" ]]; then
+  SUB=-subset; : "${HALVES:=all}"; IFS=, read -ra IDS <<<"$CASE_IDS"; NIDS="${#IDS[@]} ids"
+else
+  SUB=""; : "${HALVES:=tune heldout}"; NIDS=all
+fi
+RUN=results/extract/$(date +%Y%m%d-%H%M)-$(git rev-parse --short HEAD)-parse-${NAME}-n${LIMIT}${SUB}-${SLURM_JOB_ID}
 mkdir -p "$RUN"
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 VLLM_NO_USAGE_STATS=1 DO_NOT_TRACK=1
 export HF_HOME=$PROJECT_DIR/.cache/hf VLLM_CACHE_ROOT=$PROJECT_DIR/.cache/vllm PYTHONHASHSEED=0
-echo "node=$(hostname) job=$SLURM_JOB_ID start=$(date -Is) model=$MODEL_DIR limit=$LIMIT langs=$LANGS run=$RUN"
+echo "node=$(hostname) job=$SLURM_JOB_ID start=$(date -Is) model=$MODEL_DIR limit=$LIMIT case_ids=$NIDS halves=\"$HALVES\" langs=$LANGS run=$RUN"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 VLLM=$HOME/miniconda3/envs/pr_serve/bin/vllm
@@ -57,24 +64,24 @@ curl -sf "http://127.0.0.1:$PORT/v1/models" > /dev/null || { echo "server not re
 set +u; source "$HOME/miniconda3/etc/profile.d/conda.sh"; conda activate cbct_partialref; set -u
 for L in ${LANGS//,/ }; do
   python -m partialref.extract.per_report --manifest "$MANIFEST" --lang "$L" --server "http://127.0.0.1:$PORT" \
-    --model "$NAME" --model-path "$MODEL_DIR" --limit-cases "$LIMIT" --out-dir "$RUN"
-  for H in tune heldout; do
+    --model "$NAME" --model-path "$MODEL_DIR" --limit-cases "$LIMIT" --out-dir "$RUN" ${CASE_IDS:+--case-ids "$CASE_IDS"}
+  for H in $HALVES; do
     python -m partialref.extract.score_parser --ours "$RUN/instances_$L.parquet" --lumetti "$LUMETTI" \
-      --exclude "$EXCLUDE" --half "$H" --tag "parser-check-${NAME}-${L}-n${LIMIT}-${H}"
+      --exclude "$EXCLUDE" --half "$H" --tag "parser-check-${NAME}-${L}-n${LIMIT}${SUB}-${H}"
   done
 done
 if [[ "${REPEAT:-0}" == "1" && ",$LANGS," == *",en,"* ]]; then
   echo "--- run-to-run check: second EN pass (temperature 0), per report and per case vs the first"
   mkdir -p "$RUN/repeat"
   python -m partialref.extract.per_report --manifest "$MANIFEST" --lang en --server "http://127.0.0.1:$PORT" \
-    --model "$NAME" --model-path "$MODEL_DIR" --limit-cases "$LIMIT" --out-dir "$RUN/repeat"
+    --model "$NAME" --model-path "$MODEL_DIR" --limit-cases "$LIMIT" --out-dir "$RUN/repeat" ${CASE_IDS:+--case-ids "$CASE_IDS"}
   python -m partialref.extract.score_parser --ours "$RUN/repeat/instances_en.parquet" --ref-parse "$RUN/instances_en.parquet" \
-    --exclude "$EXCLUDE" --tag "repeat-en-${NAME}-n${LIMIT}"
+    --exclude "$EXCLUDE" --tag "repeat-en-${NAME}-n${LIMIT}${SUB}"
 fi
 if [[ ",$LANGS," == *",en,"* && ",$LANGS," == *",it,"* ]]; then
   echo "--- translation check: EN extractions scored against IT extractions (same parser)"
   python -m partialref.extract.score_parser --ours "$RUN/instances_en.parquet" --ref-parse "$RUN/instances_it.parquet" \
-    --exclude "$EXCLUDE" --tag "en-vs-it-${NAME}-n${LIMIT}"
+    --exclude "$EXCLUDE" --tag "en-vs-it-${NAME}-n${LIMIT}${SUB}"
 fi
 echo "server errors (if any):"; grep -cE " ERROR |Traceback" "$RUN/vllm_server.log" || true
 echo "done=$(date -Is)"
