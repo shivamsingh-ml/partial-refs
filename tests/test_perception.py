@@ -110,3 +110,27 @@ def test_evaluate_beats_reference_and_reports_per_centre():
     assert set(res["finding_type"]) == {"EndodonticTreatment"} and set(res["centre"]) == {"all", "F", "P", "S"}
     r = res.set_index("centre").loc["all"]
     assert r["auc_features"] > 0.9 and r["auc_reference"] < 0.6
+
+
+def test_scan_levels_and_histogram_features_also_when_the_scanner_clips():
+    from partialref.perception.tooth_classifier import feature_columns
+    from partialref.perception.tooth_features import hist_feats, scan_levels
+    rng = np.random.default_rng(0)
+    pulp, dentin, enamel = rng.normal(800, 50, 5000), rng.normal(1800, 60, 20000), rng.normal(2500, 50, 8000)
+    lv = scan_levels(np.concatenate([pulp, dentin, enamel]), 3000.0)
+    assert abs(lv["lvl_dentin"] - 1800) < 60 and abs(lv["lvl_enamel"] - 2500) < 80 and lv["clip_share"] == 0
+    clipped = np.concatenate([pulp, dentin, np.full(8000, 2600.0)])          # enamel at the ceiling
+    lc = scan_levels(clipped, 2600.0)
+    assert lc["clip_share"] > 0.2 and np.isnan(lc["lvl_enamel"]) and abs(lc["lvl_dentin"] - 1800) < 60
+    assert abs(lc["lvl_low"] - 800) < 80
+    h = hist_feats("apex", rng.normal(1300, 30, 500), 800.0, 1800.0)
+    assert abs(h["apex_p50"] - 0.5) < 0.03 and h["apex_iqr"] > 0 and h["apex_n"] == 500
+    assert np.isnan(hist_feats("apex", np.array([1.0]), 800.0, 1800.0)["apex_p50"])
+    I, L = _volume(deep_fill=True)                                           # deep filling at the ceiling
+    r = tooth_row(I, L, 36, SP, float(I.max()), float(np.median(I[L == 1])), levels={"lvl_low": 1000.0, "lvl_dentin": 2000.0})
+    assert r["crown_deep_dense_share"] > 0.1 and r["crown_deep_at_ceiling"] > 0.1
+    plain = tooth_row(*_volume(), 36, SP, 3000.0, 900.0, levels={"lvl_low": 1000.0, "lvl_dentin": 2000.0})
+    assert plain["crown_deep_dense_share"] == 0 and abs(plain["crown_deep_p50"] - 1.0) < 1e-6
+    cols = feature_columns(pd.DataFrame(columns=["crown_deep_p50", "apex_n", "lvl_dentin", "clip_share", "fdi_report",
+                                                 "crown_deep_dense_share", "bright_root_pulp"]))
+    assert set(cols) == {"crown_deep_p50", "crown_deep_dense_share", "bright_root_pulp"}

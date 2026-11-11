@@ -54,6 +54,15 @@ def _author(x) -> str:
         return str(x)
 
 
+def feature_columns(df: pd.DataFrame) -> list[str]:
+    """FEATURES plus the histogram and level features present in the table."""
+    extra = [c for c in df.columns if any(c.startswith(f"{r}_") for r in ("crown_deep", "crown_surface", "root", "apex", "midroot"))
+             and c.split("_")[-1] in ("p5", "p25", "p50", "p75", "p95", "iqr", "skew")]
+    extra += [c for c in ("crown_deep_dense_share", "crown_deep_at_ceiling") if c in df.columns]
+    # scan-level constants (levels, clip share) are NOT features: they identify the scanner (and so readers)
+    return [c for c in FEATURES if c in df.columns] + [c for c in extra if c not in FEATURES]
+
+
 def silent_authors(profiles: pd.DataFrame, min_n: int) -> set[tuple[str, str, str]]:
     """(centre, author, type) that clearly do not report the type."""
     p = profiles[(profiles["both"] + profiles["only_partner"]) >= min_n]
@@ -80,7 +89,8 @@ def tooth_labels(teeth: pd.DataFrame, reps: pd.DataFrame, inst: pd.DataFrame, si
     return out
 
 
-def evaluate(df: pd.DataFrame, folds: dict[str, int], seed: int = 0) -> pd.DataFrame:
+def evaluate(df: pd.DataFrame, folds: dict[str, int], seed: int = 0, features: list[str] | None = None) -> pd.DataFrame:
+    features = features or [c for c in FEATURES if c in df.columns]
     df = df.assign(fold=df["case_id"].map(folds), pos_in_quadrant=df["fdi_report"] % 10,
                    upper=(df["fdi_report"] // 10).isin([1, 2]).astype(int),
                    centre_code=df["case_id"].str[0].map({"F": 0, "P": 1, "S": 2}))
@@ -94,7 +104,7 @@ def evaluate(df: pd.DataFrame, folds: dict[str, int], seed: int = 0) -> pd.DataF
             tr, te = d["fold"] != k, d["fold"] == k
             if d.loc[tr, t].nunique() < 2:
                 continue
-            for cols, store in ((FEATURES + REFERENCE, pred_full), (REFERENCE, pred_pos)):
+            for cols, store in ((features + REFERENCE, pred_full), (REFERENCE, pred_pos)):
                 m = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, random_state=seed)
                 m.fit(d.loc[tr, cols], d.loc[tr, t])
                 store[te.to_numpy()] = m.predict_proba(d.loc[te, cols])[:, 1]
@@ -138,7 +148,11 @@ def main(argv: list[str] | None = None) -> int:
     silent = silent_authors(pd.read_csv(a.readers / "profiles.csv"), a.min_n)
     labels = tooth_labels(feats, reps, inst, silent)
     df = feats.merge(labels, on=["case_id", "fdi_report"])
-    res = evaluate(df, dict(zip(dev["case_id"], dev["fold"])))
+    folds = dict(zip(dev["case_id"], dev["fold"]))
+    base = [c for c in FEATURES if c in df.columns]
+    res = pd.concat([evaluate(df, folds, features=base).assign(feature_set="basic"),
+                     evaluate(df, folds, features=feature_columns(df)).assign(feature_set="basic+histogram")],
+                    ignore_index=True)
     run_id = make_run_id(a.tag)
     out = a.results_dir / "perception" / run_id
     out.mkdir(parents=True, exist_ok=False)

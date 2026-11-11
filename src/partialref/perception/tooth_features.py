@@ -16,6 +16,12 @@ Crown end vs root end: the end whose 2 mm surroundings contain more jaw bone (la
 end; end_bone_contrast near 0 means the orientation is uncertain (e.g. impacted teeth fully in bone).
 Teeth whose bounding box touches the volume border are flagged (truncated).
 
+Per-scan intensity levels (Shivam's suggestion, 2026-11-12; reviewed): voxels at the scanner ceiling are
+counted (clip_share) and set aside; the remaining tooth voxels are clustered into pulp / dentin / enamel
+(Gaussian mixture; dentin = largest group; enamel left out when the scanner clips). Every region is put on
+the scan's own scale (pulp = 0, dentin = 1). Histogram features per region (deep crown, crown surface, root,
+root-tip zone, mid-root band): percentiles 5/25/50/75/95, spread and skew on that scale.
+
 Tooth numbers: ToothFairy3 tooth labels are mirrored left/right relative to the reports (DECISIONS);
 `fdi_report` is the mirrored number. No reports are read here. Development cases only.
 
@@ -35,7 +41,8 @@ from pathlib import Path
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from scipy import ndimage
+from scipy import ndimage, stats
+from sklearn.mixture import GaussianMixture
 
 from partialref.audit.tf3_link import tf3_paths
 from partialref.provenance import make_run_id, write_provenance
@@ -55,6 +62,41 @@ DEEP_MM = 2.0                 # "deep" = at least 2 mm inside the tooth surface 
 MIDROOT_AT = 0.35             # reference bone: around the point 35 % of the way from the root tip
 
 
+LEVEL_SAMPLE = 200_000
+CLIP_SHARE_MAX = 0.01        # above this share of tooth voxels at the ceiling, the scanner clips enamel
+REGIONS = ("crown_deep", "crown_surface", "root", "apex", "midroot")
+
+
+def scan_levels(tooth_vals: np.ndarray, scan_max: float, seed: int = 0) -> dict[str, float]:
+    """Per-scan levels from the tooth voxels. Voxels at the scanner ceiling (>= 0.99 x max) are counted
+    (clip_share) and left out; the rest is clustered into 3 groups (Gaussian mixture): pulp/soft (lowest
+    mean), dentin (largest weight), enamel (highest mean, only if the scanner does not clip, else NaN)."""
+    v = tooth_vals[np.isfinite(tooth_vals)]
+    clip = v >= 0.99 * scan_max
+    out = {"clip_share": float(clip.mean()) if len(v) else np.nan}
+    u = v[~clip]
+    if len(u) < 1000:
+        return out | {"lvl_low": np.nan, "lvl_dentin": np.nan, "lvl_enamel": np.nan}
+    rng = np.random.default_rng(seed)
+    s = rng.choice(u, min(LEVEL_SAMPLE, len(u)), replace=False).reshape(-1, 1)
+    gm = GaussianMixture(3, random_state=seed).fit(s)
+    means, w = gm.means_.ravel(), gm.weights_
+    dentin = float(means[np.argmax(w)])
+    low = float(means.min())
+    enamel = float(means.max()) if out["clip_share"] < CLIP_SHARE_MAX and means.max() > dentin else np.nan
+    return out | {"lvl_low": low, "lvl_dentin": dentin, "lvl_enamel": enamel}
+
+
+def hist_feats(name: str, x: np.ndarray, low: float, dentin: float) -> dict[str, float]:
+    """Percentiles, spread and skew of intensities on the scan's own scale: pulp level = 0, dentin = 1."""
+    keys = [f"{name}_p{p}" for p in (5, 25, 50, 75, 95)] + [f"{name}_iqr", f"{name}_skew", f"{name}_n"]
+    if len(x) < 10 or not (np.isfinite(dentin) and np.isfinite(low)) or dentin - low <= 0:
+        return dict.fromkeys(keys, np.nan) | {f"{name}_n": float(len(x))}
+    z = (x - low) / (dentin - low)
+    q = np.percentile(z, [5, 25, 50, 75, 95])
+    return dict(zip(keys, [*map(float, q), float(q[3] - q[1]), float(stats.skew(z)), float(len(x))]))
+
+
 def mirror(fdi: int) -> int:
     return MIRROR_Q[fdi // 10] * 10 + fdi % 10
 
@@ -67,7 +109,7 @@ def tooth_axis(coords_mm: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarra
 
 
 def tooth_row(I: np.ndarray, L: np.ndarray, fdi: int, spacing: np.ndarray, scan_max: float,
-              bone_med: float, bbox: tuple[slice, ...] | None = None) -> dict | None:
+              bone_med: float, bbox: tuple[slice, ...] | None = None, levels: dict | None = None) -> dict | None:
     """bbox: optional tight slices around tooth + pulp (from ndimage.find_objects)."""
     if bbox is None:
         sel = np.isin(L, (fdi, 100 + fdi))
@@ -132,7 +174,17 @@ def tooth_row(I: np.ndarray, L: np.ndarray, fdi: int, spacing: np.ndarray, scan_
     def frac(x):
         return float(x.mean()) if len(x) else np.nan
 
+    lv = levels or {}
+    low, dentin = lv.get("lvl_low", np.nan), lv.get("lvl_dentin", np.nan)
+    hist = {}
+    for name, x in (("crown_deep", vals[crown & deep]), ("crown_surface", vals[crown & surf]), ("root", vals[root]),
+                    ("apex", apex_vals), ("midroot", mid_vals)):
+        hist |= hist_feats(name, x, low, dentin)
+    cd = vals[crown & deep]
+    ok = cd.size and np.isfinite(low) and np.isfinite(dentin) and dentin > low
+    deep_dense = float(((cd - low) / (dentin - low) > 1.5).mean()) if ok else np.nan
     return {
+        **hist, "crown_deep_dense_share": deep_dense, "crown_deep_at_ceiling": frac(cd >= 0.99 * scan_max),
         "fdi_mask": fdi, "fdi_report": mirror(fdi), "n_vox": n, "pulp_share": frac(pulp), "length_mm": length,
         "truncated": truncated, "end_bone_contrast": abs(bone_lo - bone_hi),
         "tooth_median_rel_max": tooth_med / scan_max,
@@ -164,7 +216,8 @@ def case_rows(case_id: str, tf3_dir: str) -> list[dict]:
         scan_max = float(I.max())
         bone = np.isin(L, BONE)
         bone_med = float(np.median(I[bone])) if bone.any() else np.nan
-        case = {"case_id": case_id, "error": None, "scan_max": scan_max, "bone_median": bone_med,
+        levels = scan_levels(I[np.isin(L, TEETH + [100 + t for t in TEETH])], scan_max)
+        case = {"case_id": case_id, "error": None, "scan_max": scan_max, "bone_median": bone_med, **levels,
                 "n_saturated": int((I >= 0.99 * scan_max).sum()),
                 "crown_label_vox": int((L == 9).sum()), "bridge_label_vox": int((L == 8).sum())}
         merged = np.where((L >= 111) & (L <= 148), L - 100, L)                # tooth + its pulp
@@ -172,7 +225,7 @@ def case_rows(case_id: str, tf3_dir: str) -> list[dict]:
         rows = []
         for fdi in TEETH:
             if fdi - 1 < len(objs) and objs[fdi - 1] is not None:
-                r = tooth_row(I, L, fdi, spacing, scan_max, bone_med, objs[fdi - 1])
+                r = tooth_row(I, L, fdi, spacing, scan_max, bone_med, objs[fdi - 1], levels)
                 if r is not None:
                     rows.append({**case, **r})
         return rows
