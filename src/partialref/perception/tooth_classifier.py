@@ -93,7 +93,10 @@ def tooth_labels(teeth: pd.DataFrame, reps: pd.DataFrame, inst: pd.DataFrame, si
     return out
 
 
-def evaluate(df: pd.DataFrame, folds: dict[str, int], seed: int = 0, features: list[str] | None = None) -> pd.DataFrame:
+def evaluate(df: pd.DataFrame, folds: dict[str, int], seed: int = 0, features: list[str] | None = None,
+             preds: list | None = None, set_name: str = "") -> pd.DataFrame:
+    """preds: optional list; out-of-fold predictions are appended as DataFrames (case_id, fdi_report,
+    finding_type, feature_set, y, p) for the reference ('<set_name>|reference') and the features."""
     features = features or [c for c in FEATURES if c in df.columns]
     df = df.assign(fold=df["case_id"].map(folds), pos_in_quadrant=df["fdi_report"] % 10,
                    upper=(df["fdi_report"] // 10).isin([1, 2]).astype(int),
@@ -113,6 +116,10 @@ def evaluate(df: pd.DataFrame, folds: dict[str, int], seed: int = 0, features: l
                 m.fit(d.loc[tr, cols], d.loc[tr, t])
                 store[te.to_numpy()] = m.predict_proba(d.loc[te, cols])[:, 1]
         ok = ~np.isnan(pred_full)
+        if preds is not None:
+            base = d.loc[ok, ["case_id", "fdi_report"]].assign(finding_type=t, y=d[t].to_numpy()[ok])
+            preds.append(base.assign(feature_set=set_name, p=pred_full[ok]))
+            preds.append(base.assign(feature_set=f"{set_name}|reference", p=pred_pos[ok]))
         cen = d["case_id"].str[0].to_numpy()
         for centre in ["all", "F", "P", "S"]:
             sel = ok & ((cen == centre) if centre != "all" else True)
@@ -155,7 +162,7 @@ def _reference_onehot(d: pd.DataFrame) -> np.ndarray:
 
 
 def evaluate_embeddings(df: pd.DataFrame, emb: np.ndarray, folds: dict[str, int], features: list[str],
-                        n_pca: int = 32, seed: int = 0) -> pd.DataFrame:
+                        n_pca: int = 32, seed: int = 0, preds: list | None = None) -> pd.DataFrame:
     """Three more rows on the same folds: 'reference (linear)' (logistic regression on the one-hot reference
     only), 'dino' (standardise -> PCA -> logistic regression on embeddings + one-hot reference) and
     'basic+histogram+dino' (gradient boosting on the features + reference + PCA components). Scaling and PCA
@@ -193,6 +200,8 @@ def evaluate_embeddings(df: pd.DataFrame, emb: np.ndarray, folds: dict[str, int]
         if len(np.unique(y)) < 2:
             continue
         for name, p in (("reference (linear)", p_ref), ("dino", p_dino), ("basic+histogram+dino", p_comb)):
+            if preds is not None:
+                preds.append(d.loc[ok, ["case_id", "fdi_report"]].assign(finding_type=t, feature_set=name, y=y, p=p[ok]))
             rows.append({"finding_type": t, "centre": "all", "n_teeth": int(ok.sum()), "n_pos": int(y.sum()),
                          "prevalence": float(y.mean()), "auc_features": roc_auc_score(y, p[ok]),
                          "ap_features": average_precision_score(y, p[ok]), "feature_set": name})
@@ -228,19 +237,23 @@ def main(argv: list[str] | None = None) -> int:
     folds = dict(zip(dev["case_id"], dev["fold"]))
     match_info = None
     base = [c for c in FEATURES if c in df.columns]
-    res = pd.concat([evaluate(df, folds, features=base).assign(feature_set="basic"),
-                     evaluate(df, folds, features=feature_columns(df)).assign(feature_set="basic+histogram")],
+    preds: list = []
+    res = pd.concat([evaluate(df, folds, features=base, preds=preds, set_name="basic").assign(feature_set="basic"),
+                     evaluate(df, folds, features=feature_columns(df), preds=preds,
+                              set_name="basic+histogram").assign(feature_set="basic+histogram")],
                     ignore_index=True)
     if a.embeddings is not None:
         z = np.load(a.embeddings / "embeddings.npz")
         dfe, E, match_info = align_embeddings(df, z)
-        common = pd.concat([evaluate(dfe, folds, features=feature_columns(dfe)).assign(feature_set="basic+histogram (same teeth)"),
-                            evaluate_embeddings(dfe, E, folds, feature_columns(dfe))], ignore_index=True)
+        common = pd.concat([evaluate(dfe, folds, features=feature_columns(dfe), preds=preds,
+                                     set_name="basic+histogram (same teeth)").assign(feature_set="basic+histogram (same teeth)"),
+                            evaluate_embeddings(dfe, E, folds, feature_columns(dfe), preds=preds)], ignore_index=True)
         res = pd.concat([res, common], ignore_index=True)
     run_id = make_run_id(a.tag)
     out = a.results_dir / "perception" / run_id
     out.mkdir(parents=True, exist_ok=False)
     res.to_csv(out / "auc_by_type.csv", index=False)
+    pd.concat(preds, ignore_index=True).to_parquet(out / "predictions.parquet", index=False)
     labels.to_parquet(out / "tooth_labels.parquet", index=False)
     summ = {"run_id": run_id, "n_teeth": len(df), "n_cases": int(df["case_id"].nunique()), "silent_cells_used": len(silent),
             "embedding_match": match_info if a.embeddings is not None else None,

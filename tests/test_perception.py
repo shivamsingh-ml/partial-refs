@@ -180,3 +180,58 @@ def test_embedding_alignment_and_feature_sets():
     assert set(res.index) == {"reference (linear)", "dino", "basic+histogram+dino"}
     assert res.loc["dino", "auc_features"] > 0.8 and res.loc["reference (linear)", "auc_features"] < 0.65
     assert res.loc["basic+histogram+dino", "auc_features"] > 0.7
+
+
+def test_paired_bootstrap_detects_a_real_difference_and_not_a_fake_one():
+    import pytest
+
+    from partialref.perception.compare_auc import paired_bootstrap
+    rng = np.random.default_rng(0)
+    n = 2000
+    cases = [f"P{i // 10:03d}" for i in range(n)]
+    y = (rng.random(n) < 0.2).astype(float)
+    good = y + rng.normal(0, 0.6, n)
+    worse = y + rng.normal(0, 1.5, n)
+    base = pd.DataFrame({"case_id": cases, "fdi_report": np.tile(np.arange(10), n // 10), "y": y})
+    r = paired_bootstrap(base.assign(p=good), base.assign(p=worse), n_boot=200)
+    assert r["d_auc"] > 0 and r["d_auc_lo"] > 0 and r["n_cases"] == 200
+    equal = paired_bootstrap(base.assign(p=y + rng.normal(0, 1.0, n)), base.assign(p=y + rng.normal(0, 1.0, n)), n_boot=200)
+    assert equal["d_auc_lo"] < 0 < equal["d_auc_hi"]                       # two equally good, independent scores
+    with pytest.raises(ValueError):                                         # different teeth
+        paired_bootstrap(base.assign(p=good), base.iloc[:100].assign(p=good[:100]), n_boot=10)
+    with pytest.raises(ValueError):                                         # same teeth, different labels
+        paired_bootstrap(base.assign(p=good), base.assign(p=good, y=1 - y), n_boot=10)
+    with pytest.raises(ValueError):                                         # a tooth twice
+        dup = pd.concat([base, base.iloc[:1]]).assign(p=0.5)
+        paired_bootstrap(dup, dup, n_boot=10)
+
+
+def test_saved_predictions_are_out_of_fold_and_reproduce_the_reported_auc():
+    from sklearn.metrics import roc_auc_score
+
+    from partialref.perception.tooth_classifier import evaluate_embeddings
+    rng = np.random.default_rng(2)
+    n = 900
+    df = pd.DataFrame({"case_id": [f"{'PFS'[i % 3]}{i // 6:03d}" for i in range(n)], "fdi_report": np.tile(np.arange(11, 17), n // 6)})
+    for f in FEATURES:
+        df[f] = rng.normal(size=n)
+    for t in TYPES:
+        df[t] = np.nan
+    y = (rng.random(n) < 0.2).astype(float)
+    df["Caries"] = y
+    df[FEATURES[0]] += 2 * y
+    folds = {c: i % 5 for i, c in enumerate(sorted(df["case_id"].unique()))}
+    preds: list = []
+    res = evaluate(df, folds, features=FEATURES, preds=preds, set_name="basic")
+    E = rng.normal(size=(n, 40))
+    E[:, 0] += 2 * y
+    res_e = evaluate_embeddings(df, E, folds, FEATURES, preds=preds).set_index("feature_set")
+    P = pd.concat(preds, ignore_index=True)
+    assert set(P["feature_set"]) == {"basic", "basic|reference", "reference (linear)", "dino", "basic+histogram+dino"}
+    assert not P.duplicated(["feature_set", "finding_type", "case_id", "fdi_report"]).any()
+    row = res[(res["finding_type"] == "Caries") & (res["centre"] == "all")].iloc[0]
+    auc = lambda s: roc_auc_score(P.loc[P.feature_set == s, "y"], P.loc[P.feature_set == s, "p"])
+    assert abs(auc("basic") - row["auc_features"]) < 1e-12 and abs(auc("basic|reference") - row["auc_reference"]) < 1e-12
+    assert abs(auc("dino") - res_e.loc["dino", "auc_features"]) < 1e-12
+    lab = P[P.feature_set == "basic"].merge(df[["case_id", "fdi_report", "Caries"]], on=["case_id", "fdi_report"])
+    assert len(lab) == n and (lab["y"] == lab["Caries"]).all()             # each prediction sits on its own tooth
