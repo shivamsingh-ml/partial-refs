@@ -17,11 +17,15 @@ Its §0 operating rules override default habits. Decisions go in [DECISIONS.md](
 6. **Verify empirically.** Check file layouts, label maps, IDs, orientation on real files; record in DECISIONS.md.
 7. **Never fabricate results.** Every reported number comes from a file in `results/` produced by
    code in this repo at a recorded git SHA.
-8. **DUA.** ToothFairy4 data (volumes, masks, report text) is never committed, pushed, pasted into
-   issues/PRs/chat, or sent to an external API. Local models only.
-   **Exception confirmed by Shivam 2026-11-10 (DECISIONS.md):** Claude may read report TEXT of the tune
-   half only, for parser error analysis. Never the held-out half, never images/masks, never for parsing
-   or metrics; report text never goes into commits, logs, results or prompt examples.
+8. **Data use (changed by Shivam 2026-11-12, DECISIONS.md).** ToothFairy4 is released under CC BY-NC-SA 4.0
+   (challenge design document); research, non-commercial use.
+   - Claude MAY read report text and look at images, masks and screenshots that Shivam shares or that an
+     analysis needs, for this project.
+   - Raw data (volumes, masks, report text) is still never committed, pushed, or pasted into issues/PRs
+     (public repo; the dataset is distributed by its organisers).
+   - Method rules, not licence rules: held-out report text is not used to develop or tune the parser;
+     T1 is judged by a human, not by Claude; parsing and metric models stay local unless Shivam decides
+     otherwise; prompt examples stay synthetic.
 9. **No backups on the cluster.** Push code daily; sync small derived results weekly (HANDOFF §5.6).
 10. **Log decisions** in DECISIONS.md with date, reason, evidence path.
 11. **Login node is shared.** Only editing, git, `ls`/`head`, jobs < ~2 min on the login node.

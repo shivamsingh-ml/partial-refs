@@ -790,3 +790,13 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   to be a person, but it carries a stable reporting profile. Next: reader-aware propensity model and
   scoring (design first), numbers reproduced with repo code before any report uses them; REPORT_GT's T2
   per-type π values stand as pooled descriptive numbers until then.
+- **Data-use rule changed (Shivam, 2026-11-12).** Evidence: the ODIN 2026 challenge design document
+  (shared by Shivam) lists the data usage agreement as CC BY-NC-SA and the ethics approval as "research
+  purposes only"; HANDOFF §0.8 already recorded CC BY-NC-SA 4.0 with no further terms found and made the
+  stricter project rule depend on Shivam's written confirmation. New rule (CLAUDE.md §0.8, HANDOFF §0.8):
+  Claude may read report text and look at images, masks and screenshots that Shivam shares or that an
+  analysis needs. Unchanged: raw data is never committed, pushed or pasted into issues/PRs. Kept as method
+  rules, not licence rules: held-out report text is not used to develop or tune the parser; T1 is judged by
+  a human; parsing and metric models stay local unless Shivam decides otherwise; prompt examples stay
+  synthetic. Shivam states that he signed no separate agreement when obtaining the data, so the licence
+  above is the only set of terms.
