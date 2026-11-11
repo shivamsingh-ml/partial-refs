@@ -277,7 +277,7 @@ def test_list_mode_steps_through_the_list_and_bundle_holds_only_listed_reports(s
     with tarfile.open(tgz) as t:
         names = t.getnames()
         info = json.loads(t.extractfile(next(n for n in names if n.endswith("bundle_info.json"))).read())
-    assert tgz.name.endswith("-list.tar.gz") and any(n.endswith("review_list.json") for n in names)
+    assert tgz.name.endswith(f"-list-{lst.stem}.tar.gz") and any(n.endswith("review_list.json") for n in names)
     assert info["n_reports"] == 4 and info["n_parse_files"] == 2 and info["review_list"] == lst.name
     assert not any("F002" in n for n in names) and "git_dirty" in info
 

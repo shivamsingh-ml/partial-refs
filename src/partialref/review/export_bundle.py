@@ -38,7 +38,10 @@ def build_bundle(parse_run: Path, manifest: Path, langs: list[str], out_dir: Pat
     if review_list is not None:
         listed = {(e["case_id"], e["report_id"]) for e in load_review_list(review_list, reps)}
         reps = reps[[k in listed for k in zip(reps["case_id"], reps["report_id"])]].copy()
-        name += "-list"
+        # one name per list (full list vs scoped subset), so bundles never overwrite or unpack into each other
+        prefix = f"review-list-{parse_run.name}"
+        stem = review_list.stem
+        name += "-list" + (stem[len(prefix):] if stem.startswith(prefix) else f"-{stem}")
     with tempfile.TemporaryDirectory() as td:
         root = Path(td) / name
         rows = []
