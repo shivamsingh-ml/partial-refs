@@ -243,7 +243,8 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   `merge_vision_lora.py`).
 - **Facts from submitted code (`external/odin2026/config.py`):** (1) the facts the released VLM was
   trained on mislabel 3 of 4 quadrants (sequential seg labels read as FDI); inference reproduces this
-  on purpose (`REMAP_MODEL_TO_FDI=0`). Per-fold retraining could use corrected facts — Shivam's
+  on purpose (`REMAP_MODEL_TO_FDI=0`) **[wrong, corrected 2026-11-11 below: the mask is already FDI]**.
+  Per-fold retraining could use corrected facts — Shivam's
   decision. (2) Orientation lead: "per the ToothFairy4 dataset correction, the reports align with the
   RAW image content, so we do NOT reorient by affine" → relevant to the left/right question.
 - **`external/odin2026/inference.py` edited (first change to the imported code):** `INPUT_PATH` /
@@ -612,3 +613,71 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   post-processing and report assembly, including the open `facts.py` question (were the VLM training facts
   built from sequential labels?). Fixes follow §0.4: edit in place, one commit per fix that says why.
   Findings go to `reports/V2V2R_CODE_AUDIT.md`.
+- **Parser v3.2 frozen (Shivam, 2026-11-11).** Full run: job 615806, run
+  `results/extract/20261110-2029-f4df9e5-parse-qwen3-32b-v32-n0-615806` (Qwen3-32B, 80 GB A100, clean tree
+  at `f4df9e5`): 1000/1000 reports parsed in EN, IT and the EN repeat, 0 errors, 0 server errors, 0 logged
+  request lines; EN: 23 salvaged outputs, 12 findings dropped by the validator (all without tooth number or
+  quadrant), 90 reports with a tooth both missing and carrying a finding (partner: RootResidue 68,
+  EndodonticTreatment 34, ConservativeRestoration 18; 43 tune / 47 held-out reports). **Freeze rule
+  (2026-11-10) met:** agreement with Lumetti's labels (internal check, not for the paper), EN, tune →
+  held-out: type F1 0.941 → 0.944, slot F1 0.853 → 0.860 (`*-parser-check-qwen3-32b-v32-en-n0-tune`,
+  `-heldout`). Largest held-out drops at slot level: Caries 0.962 → 0.898, EndodonticTreatment 0.960 →
+  0.901 (type level unchanged; read as sampling variation). **Weak type, marked and not fixed:**
+  PathologicalLesion (held-out 0.737 type / 0.621 slot). Not judgeable against Lumetti:
+  MandibularCondyleFinding (no reference), MaxillarySinusFinding (13 references). Run-to-run (EN, per
+  report, slot) F1 0.989 (v3: 0.984); EN vs IT 0.900 (v3: 0.885). No v3.3: prompt, schema, validator and
+  model stay as in commit `4142c99`; any later change needs a new version and a new full run. Next: blinded
+  review of ~60 held-out reports (T1); the missing-and-present conflicts are judged there.
+- **Audit findings that the study depends on are fixed, each at its stage (Shivam, 2026-11-10).** Source:
+  `reports/V2V2R_CODE_AUDIT.md`. Before the segmentation retraining: S1, S2, S3, S4, S7. Before predicted
+  masks enter our pipeline: S5, S8, S10. Before the LoRA retraining: V1, V3, V4, V5, S6, V12, V13. Before
+  baseline inference and scoring: V7, V8, V9, V10, V14. Before the decoder: S9, log-probabilities from the
+  VLM call, captions without mask facts for the decoder arm. Not needed: dead and side scripts, the
+  few-shot scripts, V2 if our own labels replace the reader merge. Rules: one commit per fix in
+  `external/odin2026/` that says why, diff shown first; where a fix changes what the submitted system
+  outputs, it gets a switch whose default is the submitted behaviour, so that the submitted and the
+  corrected baseline can both be reported. Open decisions (Shivam): start weights, mirror bug, left/right
+  convention, thresholds, baseline definition, silence labels.
+- **GT gate stays on all P/F/S double-read cases (Shivam, 2026-11-10).** T2–T4 describe the reference
+  reports; no system is trained, tuned or scored there, so the gate is not split into development and test.
+  Two rules keep the locked test set clean: (1) any π that feeds or scores a system is refitted on the
+  right subset (other folds for fold k; development set only for the locked test set and for centre A);
+  the gate's all-cases π is never reused for that. (2) The gate decides go or no-go only; which finding
+  types enter the final evaluation and how centres are pooled is set by a fixed rule applied to the
+  development-set π and frozen in the analysis plan before the first test-set scoring. Pre-registration of
+  the gate / analysis plan was discussed and set aside for now.
+- **Correction of the 2026-11-07 entry "Facts from submitted code" (audit S10, 2026-11-11).** That entry
+  says inference reproduces the sequential-labels-read-as-FDI quirk on purpose (`REMAP_MODEL_TO_FDI=0`).
+  The code shows otherwise: the predictor already writes FDI numbers (`orig_mapping`,
+  `umamba2/task1_inference.py:387-399`), so the mask is FDI with the flag at 0, and setting the flag to 1
+  would map twice. The comments in `facts.py:4-14` and `config.py:39-47` are wrong and are corrected with
+  the S10 fix. Still open (ask Chen): which label scheme the facts of the released adapter's training data
+  used.
+- **Correction of HANDOFF M3 (audit V9, 2026-11-11).** The switch
+  `POSTPROCESS_CONFIG=configs/postprocess/no_source_rules.yaml` named there does not exist in the submitted
+  code (`RULES` in `vqa/code/source_rules.py:71-82` is a constant). Per-rule and per-silence switches are
+  part of the V9 fix; HANDOFF now says so.
+- **Split draft prepared, not approved (2026-11-10).** From case IDs, centre, number of EN reports and
+  manual-mask tooth counts only: locked test 107 of 527 P/F/S cases (20 %, 74 double-read), five folds of
+  84, centre A (95) external, segmentation training list 425 (development + 5 TF3-only scans); strata
+  centre × single/double-read, ordered by "teeth in both jaws"; seed 20261110. Open for Shivam: 20 % or
+  25 %, the third stratum, whether the cases with an open visual check may be test cases (P242 is one in
+  the draft), S0015 in segmentation training. Nothing is committed to `configs/splits/` before approval.
+- **T1 review sample: fixed list, two strata (2026-11-11).** The review app only shuffled whole cases; the
+  planned sample did not exist in code. New `partialref.review.sample` draws one list with a recorded seed
+  (IDs and codes only): **base** = 60 random held-out reports of double-read P/F/S cases (default
+  exclusions P116/P117/P260/P261/S0015), proportional by centre; every parsed finding gets a verdict and
+  missed findings are entered → parser precision and recall per finding type. **extra** = for each type the
+  parser found in fewer than 15 base reports, further random held-out reports in which the parser found
+  that type; they are selected on the parser's own output, so they count only towards that type's
+  precision, never recall and never another type. The app (`REVIEW_LIST`) follows the list one report at a
+  time, shows verdict boxes only for the types an extra report was drawn for, has 6 rows for missed
+  findings (was 3: a cap would flatter recall) and warns when a finding was left without verdict; the last
+  saved record of a report counts. The bundle built with `--review-list` holds only the listed reports.
+  The log format is unchanged. List drawn from the frozen run with seed 20261111: 348 reports / 174 cases
+  in the population; base P 42, F 11, S 7; 53 extra reports (Caries, PeriapicalLesion, RootResidue,
+  PostExtractionSocket 9 each, MaxillarySinusFinding 11, PathologicalLesion and DentalImplant 5 each,
+  MandibularCondyleFinding 4 = all there are); 113 reports in total
+  (`results/review/lists/review-list-20261110-2029-f4df9e5-parse-qwen3-32b-v32-n0-615806-s20261111.json`).
+  Limits to state with T1: verdicts are per parsed finding, not per tooth; about 15 reports per rare type
+  give wide intervals; MandibularCondyleFinding (5 reports) will not be estimable.

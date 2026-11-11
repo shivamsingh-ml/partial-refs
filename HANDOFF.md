@@ -601,7 +601,8 @@ once at the end; LOCO as a separate analysis.
   in place, one commit per fix that says why (§0.4).
 - V2V2R full pipeline with LoRA **retrained per fold** (`vqa/code/train_vision_lora.py`, ~1,190 steps per
   fold on A100; approved 2026-11-07); ablations from the paper (segmentation-only, base
-  Qwen3.5-9B, +LoRA); `POSTPROCESS_CONFIG=configs/postprocess/no_source_rules.yaml`; controls.
+  Qwen3.5-9B, +LoRA); rules and silences switched off (per-rule switches do not exist in the
+  submitted code yet; they are added with audit fix V9); controls.
   Retraining first on one fold as a cheap diagnostic (§0.3) before all folds.
 - Both fixed-reference and mean-over-references protocols; paired bootstrap CIs (≥ 10,000
   resamples, matched cases).
