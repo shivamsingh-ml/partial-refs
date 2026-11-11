@@ -835,3 +835,11 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   incomplete, so these are lower bounds. Trials showed enamel saturating at the scan maximum in some
   scanners (fixed thresholds fail); next: per-scan intensity clustering and histogram features (Shivam's
   suggestion), then candidate 2/3 (learned image features) for caries and root-tip infection.
+- **Histogram and per-scan clustering features help the hard findings (Shivam's suggestion, 2026-11-12).**
+  Features `results/perception/20261111-2211-cdcd39b-tooth-features-hist`, classifier
+  `results/perception/20261111-2212-cdcd39b-tooth-classifier` (same folds and teeth as step 1), AUC basic →
+  basic+histogram: Caries 0.73 → 0.77, PeriapicalLesion 0.83 → 0.86, ProstheticDevice 0.88 → 0.89,
+  EndodonticTreatment 0.98 → 0.98, ConservativeRestoration 0.87 → 0.87 (no intervals for the differences
+  yet). Scan-level constants are not used as features (they identify scanner and reader). Next: step 2,
+  DINO image embeddings of tooth slices as extra classifier input (candidate 3); the VLM gets the
+  classifier's probabilities as hints, not raw embeddings.
