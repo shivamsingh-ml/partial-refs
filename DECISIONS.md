@@ -741,3 +741,13 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   only the scope's types and stores "scope" in each record; a scoped record does not mark a report as done
   for a list with a wider scope. Analysis rules (reviewed): a record is evidence only for its scope's types;
   "last saved record counts" per (report, finding type); precision and recall per type with their own n.
+- **GT gate decided: GO in two stages (Shivam, 2026-11-11).** Report: `reports/REPORT_GT.md` (T1 passed
+  provisionally; T2, T3, T4 passed). Stage 1, CPU only: a corrected-precision estimator that works for
+  skilled systems (validated in simulation), a simulation of the π-aware decoder's benefit over fixed
+  silence rules with the real p and π, the split, and the boundary with Chen. A second decision point comes
+  before any GPU-heavy work (segmentation retraining, per-fold LoRA, decoder); if the estimator fails or the
+  simulated gain is small, the measurement paper is written from the gate results and the decoder is
+  deferred. Reason: the measurement result is solid, the decoder is a bet whose proof depends on an
+  estimator that does not exist yet (the HANDOFF §2.2 formula fails for skilled systems). Conditions for
+  stage 2: REPORT_GT §8 (full T1 before final runs; parser v3.3 before LoRA retraining; canal per report;
+  centre-level π; π refitted per fold).
