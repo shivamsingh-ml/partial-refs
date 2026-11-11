@@ -22,8 +22,12 @@ Units (what the masks support today):
   missing-tooth rule); mask truth = no tooth label at that position (same left/right handling as T2).
   A reader "mentions" the gap if it codes ToothAbsence, DentalImplant or PostExtractionSocket there (an
   implant site has no tooth label, and the parser codes "implant in 36" as DentalImplant only; bridge
-  pontics are already ToothAbsence). The ToothAbsence-only coding and a version without third molars are
-  reported as extra rows.
+  pontics are already ToothAbsence). The ToothAbsence-only coding, a version without third molars and
+  one row per jaw are reported as extra rows. Per jaw to test a hypothesis: centre P's short scans (about
+  5 cm) may leave upper tooth positions outside the scan, so a missing upper label may mean "not in the
+  scan" rather than "missing tooth" (alternatives: readers skip the upper jaw, or annotators leave partly
+  visible teeth unlabelled). If it holds, the cause is `slot_assessable` in agreement.py, which checks the
+  side and back faces of the scan but not the top face. Evidence: DECISIONS 2026-11-11.
 - DentalImplant, ProstheticDevice: per CASE, because the implant / crown / bridge labels carry no tooth
   number. Mask truth = implant label (crown or bridge label) present with at least --min-mm3; a report
   "mentions" the type if it has at least one finding of that type (ProstheticDevice: only prosthesis_type
@@ -60,6 +64,12 @@ CASE_TYPES = {"DentalImplant": ["implant"], "ProstheticDevice": ["crown", "bridg
 GAP_TYPES = ("ToothAbsence", "DentalImplant", "PostExtractionSocket")      # a reader saying "no natural tooth here"
 FIXED_PROSTHESES = {"Crown", "FixedBridge", "SuspendedPontic"}              # the kinds that have a mask label
 GT_TYPES = ["ToothAbsence", "DentalImplant", "ProstheticDevice"]
+
+
+def jaw_subset(inst: pd.DataFrame, jaw: str) -> pd.DataFrame:
+    """Tooth-position instances of one jaw: FDI quadrants 1/2 = upper, 3/4 = lower (the left/right mirroring
+    of mask teeth swaps 1<->2 and 3<->4 only, so it never moves a tooth between jaws)."""
+    return inst[inst["slot"].str[0].isin({"upper": ["1", "2"], "lower": ["3", "4"]}[jaw])]
 
 
 def gap_mentions(mentions: pd.DataFrame, types=GAP_TYPES) -> pd.DataFrame:
@@ -198,7 +208,9 @@ def main(argv: list[str] | None = None) -> int:
     ta_strict = tooth_absence_instances(reps, gap_mentions(mentions, ("ToothAbsence",)), vis, bad, a.region_mode)
     sets = {("ToothAbsence", "tooth, all permanent"): ta,
             ("ToothAbsence", "tooth, without third molars"): ta[~ta["slot"].str.endswith("8")],
-            ("ToothAbsence", "tooth, ToothAbsence coding only"): ta_strict}
+            ("ToothAbsence", "tooth, ToothAbsence coding only"): ta_strict,
+            ("ToothAbsence", "tooth, lower jaw"): jaw_subset(ta, "lower"),
+            ("ToothAbsence", "tooth, upper jaw"): jaw_subset(ta, "upper")}
     case_mentions = {"DentalImplant": mentions, "ProstheticDevice": fixed_prosthesis_mentions(a.parse_run, a.lang)}
     for ftype, labels in CASE_TYPES.items():
         sets[(ftype, "case")] = case_level_instances(reps, case_mentions[ftype], cf, bad, ftype, labels, a.min_mm3)

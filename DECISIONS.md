@@ -701,3 +701,17 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   for rare findings, and it does not remove the advantage a system gains by staying silent on under-reported
   types (`tests/test_gate_t3_t4.py`); T4 therefore reports raw − true precision next to corrected − raw, and
   a better estimator (HANDOFF L1) is needed before systems are scored.
+- **T3 first results and the upper-jaw question (2026-11-11).** Run
+  `results/propensity/20261111-1107-68c8ce5-mask-agreement-gt` (double-read): DentalImplant per case π_mask
+  0.95 vs two-reader 0.97, φ_mask 0.006; ProstheticDevice (Crown/FixedBridge/SuspendedPontic) per case 0.77
+  vs 0.78, but φ_mask 0.106 (upper limit 0.14 > 0.05); ToothAbsence per position 0.41 vs 0.73 (φ 0.017).
+  Breakdown (codes only, scratch script, not kept): of the mask-absent positions in double-read cases,
+  neither reader mentions 14 % in the lower jaw, but 96 % in the upper jaw of centre P (F 10 %, S 44 %);
+  front versus back teeth does not explain it. Hypothesis: centre P's short scans (~5 cm) leave upper
+  positions outside the scan, so a missing upper label means "not in the scan"; alternatives: readers skip
+  the upper jaw, or annotators leave partly visible teeth unlabelled. Image-only rules tried on the upper
+  positions (maxilla label present; no upper root tip cut; maxilla clear of the top face) do not separate
+  them cleanly. T3 now reports ToothAbsence per jaw (reviewed). Open: a top-face rule in `slot_assessable`
+  if the hypothesis holds. ProstheticDevice: 10 double-read cases where both readers name a fixed
+  prosthesis and the mask has no crown/bridge label go to Shivam for a visual check (mask gap or
+  parser/reader error); the case list is kept locally, not in the repo.

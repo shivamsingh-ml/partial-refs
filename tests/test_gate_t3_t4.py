@@ -17,6 +17,7 @@ from partialref.propensity.mask_agreement import (
     compare,
     fixed_prosthesis_mentions,
     gap_mentions,
+    jaw_subset,
     tooth_absence_instances,
 )
 
@@ -78,6 +79,11 @@ def test_t3_instance_builders():
     assert grow("P001", "26")[["k", "truth"]].tolist() == [1, True]               # implant counts as "no tooth"
     assert grow("P002", "11")[["k", "truth"]].tolist() == [1, True]
     assert grow("P001", "17")["k"] == 2 and len(gap) == len(ta)
+    up, low = jaw_subset(gap, "upper"), jaw_subset(gap, "lower")
+    assert len(up) and len(low) and not set(up.index) & set(low.index) and len(up) + len(low) == len(gap)
+    assert set(up["slot"].str[0]) == {"1", "2"} and set(low["slot"].str[0]) == {"3", "4"}
+    from partialref.propensity.agreement import _mirror_tooth
+    assert all(_mirror_tooth(t)[0] in "12" for t in up["slot"]) and all(_mirror_tooth(t)[0] in "34" for t in low["slot"])
     cf = pd.DataFrame({"case_id": ["P001", "P002", "P003", "P004"], "label_found": [True, True, True, False],
                        "implant_mm3": [40.0, 0.0, 5.0, 99.0], "crown_mm3": [0.0, 0.0, 3.0, 0.0],
                        "bridge_mm3": [0.0, np.nan, 4.0, 0.0]})
