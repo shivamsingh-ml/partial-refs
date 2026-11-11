@@ -769,3 +769,24 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   never replace parser labels for test cases and the parser correction for test-set π comes from
   development-case records (all records as sensitivity); the segmentation training list is frozen at
   stage 2 from development cases plus the 5 TF3-only scans, without S0015 and unresolved cases.
+- **Reporting is reader-specific, not random omission (exploratory, 2026-11-11; Shivam's hypothesis).**
+  Shivam asked whether the two reports of a case complement each other. Count check on double-read P/F/S
+  cases with the frozen parse (`scratch/reader_asymmetry.py`, git-ignored scratch script; job `pr-readers`;
+  counts only, no report text; NOT yet repo code, so these numbers are indications): per `report_x` (first
+  number of the report file name) and finding type, both / only this report / only the partner. `report_x`
+  behaves like a reader or reporting style with fixed habits. Centre F: `report_x` 14 (59 cases) mentions
+  none of the 200 ConservativeRestoration slots its partners mention, 2 Caries slots against 49, and 9 % of
+  the partners' ToothAbsence slots; 27 (50 cases) reports them. Centre P: 32 (51 cases) mentions 0 of 42
+  restoration slots, 22 mentions 0 of 18 caries slots, 24 mentions 88 % of the partners' restorations.
+  MandibularCanalCourse and EndodonticTreatment are reported by everyone (about 0.8–1.0). Pairs are fixed
+  (F: 14+27 in 47 cases, 14+29 in 10; P: 25+32, 24+33, 22+26, …; S: 28+29 in all 41). Consequences:
+  (1) the exchangeable-reader model of T2 is wrong for several types: the pooled π (e.g. restorations 0.47,
+  caries 0.27) averages readers who never report a type with readers who do; (2) the extreme "house style"
+  of centre F in REPORT_GT §4 is one reader's habit; (3) p for those cells is not identified (centre-F
+  restorations p ≈ 1 was an artefact); (4) a reference is informative for a finding type only if its reader
+  reports that type; the union of two reports is close to complete where at least one of them does, which
+  fits Lumetti et al.'s per-patient consolidated labels and their reader mix (2 radiologists, 6
+  maxillofacial surgeons). The 2026-11-07 note "report_x is probably not a reader ID" is revised: not proven
+  to be a person, but it carries a stable reporting profile. Next: reader-aware propensity model and
+  scoring (design first), numbers reproduced with repo code before any report uses them; REPORT_GT's T2
+  per-type π values stand as pooled descriptive numbers until then.
