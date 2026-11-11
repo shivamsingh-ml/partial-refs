@@ -208,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
                     default=["P116", "P117", "P260", "P261", "S0015"])
     ap.add_argument("--min-n", type=int, default=10, help="instances the partner mentions, per half, for stability")
     ap.add_argument("--n-boot", type=int, default=1000)
+    ap.add_argument("--splits", type=Path, default=None, help="restrict to cases of --role in this split file")
+    ap.add_argument("--role", default="dev")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--results-dir", default=Path("results"), type=Path)
     ap.add_argument("--tag", default="readers")
@@ -216,6 +218,9 @@ def main(argv: list[str] | None = None) -> int:
     reps, bad = select_reports(a.manifest, a.parse_run, a.lang, a.centres, a.exclude)
     bad_cases = {c for c, _ in bad}
     reps = reps[~reps["case_id"].isin(bad_cases)][["case_id", "report_id", "report_x"]]
+    if a.splits is not None:
+        sp = pd.read_csv(a.splits)
+        reps = reps[reps["case_id"].isin(set(sp.loc[sp["role"] == a.role, "case_id"]))]
     inst = pd.read_parquet(a.parse_run / f"instances_{a.lang}.parquet")
     inst = inst.merge(reps[["case_id", "report_id"]], on=["case_id", "report_id"])
     vis = pd.read_parquet(a.vis / "case_features.parquet")
@@ -253,7 +258,8 @@ def main(argv: list[str] | None = None) -> int:
     dvs.to_csv(out / "double_vs_single.csv", index=False)
     (out / "summary.json").write_text(json.dumps({"run_id": run_id, **summary}, indent=2, default=str))
     write_provenance(out, extra={"run_id": run_id, "parse_run": str(a.parse_run), "manifest": str(a.manifest),
-                                 "vis": str(a.vis), "excluded": a.exclude})
+                                 "vis": str(a.vis), "excluded": a.exclude,
+                                 "splits": str(a.splits) if a.splits else None, "role": a.role if a.splits else None})
     print(json.dumps({"run_id": run_id, **{k: v for k, v in summary.items() if k != "silent_cells_upper_ci_below_0_10"},
                       "n_silent_cells": len(silent)}, indent=2, default=str))
     return 0
