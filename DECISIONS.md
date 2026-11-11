@@ -681,3 +681,23 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   (`results/review/lists/review-list-20261110-2029-f4df9e5-parse-qwen3-32b-v32-n0-615806-s20261111.json`).
   Limits to state with T1: verdicts are per parsed finding, not per tooth; about 15 reports per rare type
   give wide intervals; MandibularCondyleFinding (5 reports) will not be estimable.
+- **T2 result and T3/T4 code after independent review (2026-11-11).** T2 on the frozen parse (jobs
+  616001/616002, `results/propensity/20261111-1056-6901b70-propensity-gt-v32-B` main, `-A` secondary, clean
+  tree): 10 of 13 estimable types pass both guidance checks (upper 95 % limit < 0.90, width ≤ 0.30); e.g.
+  Caries 0.27 [0.16, 0.40], ConservativeRestoration 0.47 [0.40, 0.54], ToothAbsence 0.70 [0.64, 0.75] (A:
+  0.73), MandibularCanalCourse 0.89 [0.88, 0.91]; RootResidue and PostExtractionSocket too wide,
+  MaxillarySinusFinding low support, MandibularCondyleFinding not estimable. Not yet corrected for parser
+  error (T1). New code: `propensity/mask_agreement.py` (T3), `propensity/effect_size.py` (T4),
+  `metrics/corrected.py`. The reviewer agent's findings changed the design: (1) for ToothAbsence a reader
+  "mentions" a gap if it codes ToothAbsence, DentalImplant or PostExtractionSocket at that position (implant
+  sites have no tooth label; the parser codes an implant as DentalImplant only); the ToothAbsence-only coding
+  is an extra row. T2 is not rerun for this: positions no reader mentions only inform p, not π. (2) A
+  two-reader π above the mask π is NOT evidence of false mentions: with φ = 0 the two-reader fit estimates
+  E[π²]/E[π] ≥ E[π], so it means π varies between findings (two-reader π is an upper bound, HANDOFF L3);
+  false mentions are judged by φ against the masks (upper 95 % limit). (3) ProstheticDevice is compared only
+  for Crown / FixedBridge / SuspendedPontic; implants and fixed prostheses per case (no tooth number on those
+  mask labels), plus rows with a single mask component. **HANDOFF §2.2 corrected precision is not adopted
+  as is (Shivam: the handoff's methods may be changed):** for a system with skill it under-corrects, most
+  for rare findings, and it does not remove the advantage a system gains by staying silent on under-reported
+  types (`tests/test_gate_t3_t4.py`); T4 therefore reports raw − true precision next to corrected − raw, and
+  a better estimator (HANDOFF L1) is needed before systems are scored.
