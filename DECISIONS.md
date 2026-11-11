@@ -843,3 +843,14 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   yet). Scan-level constants are not used as features (they identify scanner and reader). Next: step 2,
   DINO image embeddings of tooth slices as extra classifier input (candidate 3); the VLM gets the
   classifier's probabilities as hints, not raw embeddings.
+- **Frozen DINOv2 embeddings add little to the hand-made per-tooth features (2026-11-12).** Slices
+  `results/perception/20261111-2240-1c2a2bd-tooth-slices` (8,285 teeth, 3 planes each); embeddings on a 1g.5gb
+  GPU slice: `...-2249-fbf1390-dino-dinov2-base-616578` (540 s), `...-dinov2-small-616579` (173 s); classifier
+  runs `results/perception/20261111-2301-fbf1390-tooth-classifier-dinov2-base-616578` and
+  `...-2303-...-small-616579` (5,285 teeth, 389 cases, all matched). AUC base / small, same teeth and folds:
+  reference (linear) Caries 0.61, PeriapicalLesion 0.63, ProstheticDevice 0.65, ConservativeRestoration 0.73,
+  EndodonticTreatment 0.72; hand-made features 0.77 / 0.86 / 0.89 / 0.87 / 0.98; DINO alone 0.76–0.78 / 0.82–0.84
+  / 0.88 / 0.81 / 0.95; features + DINO 0.78–0.79 / 0.86 / 0.89–0.90 / 0.87–0.88 / 0.98. DINO (frozen, 32 PCA
+  components) is close to but below the hand-made features and adds at most 1–2 AUC points when combined (no
+  intervals yet). Next: paired case-bootstrap intervals for the differences; then decide between DINOv3, a
+  model trained on our own data, or the segmentation track.
