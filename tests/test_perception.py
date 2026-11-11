@@ -134,3 +134,49 @@ def test_scan_levels_and_histogram_features_also_when_the_scanner_clips():
     cols = feature_columns(pd.DataFrame(columns=["crown_deep_p50", "apex_n", "lvl_dentin", "clip_share", "fdi_report",
                                                  "crown_deep_dense_share", "bright_root_pulp"]))
     assert set(cols) == {"crown_deep_p50", "crown_deep_dense_share", "bright_root_pulp"}
+
+
+def test_tooth_frame_and_slices_put_the_crown_at_the_top():
+    from partialref.perception.tooth_slices import SIZE, sample_plane, tooth_frame, window
+    for root_up in (False, True):
+        I, L = _volume(cap=True, root_up=root_up)
+        mb = (L == 36) | (L == 136)
+        centre, (u, v, w), _, _, contrast = tooth_frame(mb, L, SP)
+        assert contrast > 0.3 and abs(np.linalg.norm(u) - 1) < 1e-9 and abs(u @ v) < 1e-9 and abs(u @ w) < 1e-9
+        assert (u[2] > 0.99) != root_up                                    # u points root -> crown
+        img = window(sample_plane(I, centre, u, v, SP), 0.0, 3000.0)
+        assert img.shape == (SIZE, SIZE) and img.dtype == np.uint8
+        assert img[: SIZE // 2].max() == 255 and img[SIZE // 2:].max() < 255  # bright cap in the upper half only
+
+
+def test_embedding_alignment_and_feature_sets():
+    import pytest
+
+    from partialref.perception.tooth_classifier import align_embeddings, evaluate_embeddings
+    df = pd.DataFrame({"case_id": ["P001", "P001", "F002"], "fdi_report": [36, 46, 11]})
+    emb = np.arange(4 * 6, dtype=float).reshape(4, 6)                       # 3 slices x 2 values per tooth
+    z = {"case_id": np.array(["F002", "P001", "P001", "S009"]), "fdi_report": np.array([11, 46, 36, 21]), "emb": emb}
+    dfe, E, info = align_embeddings(df, z)                                  # shuffled order, one extra tooth
+    assert list(dfe["fdi_report"]) == [36, 46, 11] and info == {"matched": 3, "dropped": 0, "dropped_by_centre": {}}
+    assert E.shape == (3, 4) and list(E[0]) == [(12 + 14) / 2, (13 + 15) / 2, 16, 17]   # planes 0/1 averaged
+    miss = align_embeddings(pd.concat([df, pd.DataFrame({"case_id": ["S010"], "fdi_report": [21]})]), z)[2]
+    assert miss["dropped"] == 1 and miss["dropped_by_centre"] == {"S": 1}
+    with pytest.raises(ValueError):
+        align_embeddings(df, {**z, "case_id": np.array(["F002", "P001", "P001", "P001"]),
+                              "fdi_report": np.array([11, 46, 36, 36])})
+    rng = np.random.default_rng(1)
+    n = 900
+    df = pd.DataFrame({"case_id": [f"{'PFS'[i % 3]}{i // 6:03d}" for i in range(n)], "fdi_report": rng.choice([16, 26, 36], n)})
+    for f in FEATURES:
+        df[f] = rng.normal(size=n)
+    for t in TYPES:
+        df[t] = np.nan
+    y = (rng.random(n) < 0.15).astype(float)
+    df["Caries"] = y
+    E = rng.normal(size=(n, 40))
+    E[:, 3] += 2.5 * y                                                       # signal only in the embedding
+    folds = {c: i % 5 for i, c in enumerate(sorted(df["case_id"].unique()))}
+    res = evaluate_embeddings(df, E, folds, FEATURES).set_index("feature_set")
+    assert set(res.index) == {"reference (linear)", "dino", "basic+histogram+dino"}
+    assert res.loc["dino", "auc_features"] > 0.8 and res.loc["reference (linear)", "auc_features"] < 0.65
+    assert res.loc["basic+histogram+dino", "auc_features"] > 0.7
