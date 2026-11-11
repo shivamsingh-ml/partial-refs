@@ -14,7 +14,11 @@ Provisional visibility (GT; final thresholds are frozen later in M1; recorded in
   ToothDevelopmentPathology, PeriapicalLesion (+ root tip not cut by the scan boundary);
 - slot must be assessable (HANDOFF §2.6 missing-tooth rule): ToothAbsence, DentalImplant,
   ProstheticDevice, PostExtractionSocket, RootResidue -> arch in the scan AND (slot lies between present
-  teeth of its quadrant OR that quadrant's teeth do not touch a lateral/posterior face);
+  teeth of its quadrant OR that quadrant's teeth do not touch a lateral/posterior face); an UPPER slot
+  without a tooth in the mask additionally needs the upper jaw bone in the mask: maxilla label of at least
+  --upper-bone-min-mm3 (default 2000 mm3, just below the smallest maxilla of the tall centre-F scans, which
+  show the whole upper jaw; 2026-11-11: in short scans only the tips of a few upper teeth, or a thin strip
+  of bone, may reach into the picture, so "no tooth label" there means "not scanned");
 - MandibularCanalCourse: canal label of that side present; MaxillarySinusFinding: sinus label present
   (provisional: the agreed "% of a complete sinus" rule needs a reference volume, still open);
 - MandibularCondyleFinding: BOTH mandible halves touch neither the top nor the posterior face (one value
@@ -66,7 +70,12 @@ def _mirror_tooth(t: str) -> str:
     return MIRROR_Q[t[0]] + t[1]
 
 
-def load_visibility(vis_dirs: list[Path], mirror_centres: str = "", swap_side_centres: str = "") -> dict[str, dict]:
+UPPER_BONE_MIN_MM3 = 2000.0
+UPPER_GAP_RULES = ("bone", "teeth_or_bone")
+
+
+def load_visibility(vis_dirs: list[Path], mirror_centres: str = "", swap_side_centres: str = "",
+                    upper_bone_min_mm3: float = UPPER_BONE_MIN_MM3) -> dict[str, dict]:
     """Per case: arches in the scan, teeth present, teeth with cut root tip, quadrant edge contact,
     side structures. Cases of ``mirror_centres`` get left/right FDI quadrants of the mask teeth swapped
     (1<->2, 3<->4): TF3 tooth labels are mirrored relative to the reports (DECISIONS 2026-11-08/09).
@@ -111,6 +120,7 @@ def load_visibility(vis_dirs: list[Path], mirror_centres: str = "", swap_side_ce
                                                      false_(f"mandible_{h}_touches_post") for h in ("left", "right")))
             out[c] = {
                 "upper": vox("maxilla") > 0 or bool(pres & UPPER),
+                "upper_bone": vox("maxilla") > 0 and (r.get("maxilla_mm3") or 0) >= upper_bone_min_mm3,
                 "lower": vox("mandible") > 0 or bool(pres - UPPER),
                 "teeth": pres, "root_cut": cut.get(c, set()), "quadrant_edge": edge,
                 "canal_Left": vox("canal_left") > 0, "canal_Right": vox("canal_right") > 0,
@@ -123,7 +133,12 @@ def load_visibility(vis_dirs: list[Path], mirror_centres: str = "", swap_side_ce
     return out
 
 
-def is_visible(v: dict, ftype: str, slot: str) -> bool:
+def is_visible(v: dict, ftype: str, slot: str, upper_gap_rule: str = "bone") -> bool:
+    """upper_gap_rule: "bone" (main, 2026-11-11) = an upper slot without a mask tooth also needs the upper
+    jaw bone label; "teeth_or_bone" = previous rule (any upper tooth or the bone puts the upper arch in the
+    scan). Dicts without "upper_bone" (older callers) fall back to "upper"."""
+    if upper_gap_rule not in UPPER_GAP_RULES:
+        raise ValueError(f"upper_gap_rule must be one of {UPPER_GAP_RULES}, got {upper_gap_rule!r}")
     kind = slot_kind(FindingType(ftype))
     if kind == "tooth":
         arch = "upper" if slot in UPPER else "lower"
@@ -132,6 +147,9 @@ def is_visible(v: dict, ftype: str, slot: str) -> bool:
             if ftype == "PeriapicalLesion":
                 ok = ok and slot not in v["root_cut"]
             return ok
+        if arch == "upper" and upper_gap_rule == "bone" and slot not in v["teeth"] \
+                and not v.get("upper_bone", v["upper"]):
+            return False
         return v[arch] and slot_assessable(v, slot)
     if kind == "quadrant":
         return v[QUADRANTS[slot]]
@@ -161,7 +179,7 @@ def candidate_slots(ftype: str) -> list[str]:
 # ---------------------------------------------------------------- instances
 def build_instances(reports: pd.DataFrame, mentions: pd.DataFrame, vis: dict[str, dict],
                     failed_reports: set[tuple[str, str]], types: list[str],
-                    region_mode: str = "omission") -> tuple[pd.DataFrame, dict]:
+                    region_mode: str = "omission", upper_gap_rule: str = "bone") -> tuple[pd.DataFrame, dict]:
     """reports: case_id, report_id (all EN reports of the selected cases).
     mentions: case_id, report_id, finding_type, slot (parser output)."""
     bad_cases = {c for c, _ in failed_reports}
@@ -194,14 +212,14 @@ def build_instances(reports: pd.DataFrame, mentions: pd.DataFrame, vis: dict[str
         n_uninf[(c, t, tooth)] += 1
     rows, invisible_mentions = [], defaultdict(int)
     for (c, t, s), k in k_counts.items():
-        if t in types and s in set(candidate_slots(t)) and not is_visible(vis[c], t, s):
+        if t in types and s in set(candidate_slots(t)) and not is_visible(vis[c], t, s, upper_gap_rule):
             invisible_mentions[t] += int(k)
     for c, n in n_by_case.items():
         v = vis[c]
         for t in types:
             for s in candidate_slots(t):
                 n_eff = n - n_uninf.get((c, t, s), 0)
-                if n_eff >= 1 and is_visible(v, t, s):
+                if n_eff >= 1 and is_visible(v, t, s, upper_gap_rule):
                     rows.append((c, c[0], t, s, n_eff, k_counts.get((c, t, s), 0)))
     inst = pd.DataFrame(rows, columns=["case_id", "centre", "finding_type", "slot", "n", "k"])
     info = {"cases_used": int(inst["case_id"].nunique()) if len(inst) else 0,
@@ -213,7 +231,7 @@ def build_instances(reports: pd.DataFrame, mentions: pd.DataFrame, vis: dict[str
             "reader_slot_pairs_uninformative_by_region": len(uninformative),
             "mentions_total": {t: int(m[m.finding_type == t].shape[0]) for t in types},
             "mentions_total_region_level": m.loc[is_region, "finding_type"].value_counts().to_dict(),
-            "region_mode": region_mode}
+            "region_mode": region_mode, "upper_gap_rule": upper_gap_rule}
     return inst, info
 
 
@@ -305,6 +323,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--region-mode", choices=["omission", "uninformative"], default="omission",
                     help="region-level mentions without tooth numbers: counted as omitting the unnamed teeth (main, "
                          "tooth-level reference completeness) or reader uninformative for them (secondary)")
+    ap.add_argument("--upper-gap-rule", choices=["bone", "teeth_or_bone"], default="bone",
+                    help="upper slot without a mask tooth: needs the upper jaw bone label (main, 2026-11-11) or "
+                         "only some upper tooth or the bone (previous rule, sensitivity)")
+    ap.add_argument("--upper-bone-min-mm3", type=float, default=UPPER_BONE_MIN_MM3)
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--by-centre", action="store_true")
@@ -316,9 +338,11 @@ def main(argv: list[str] | None = None) -> int:
     reps, bad_reports = select_reports(a.manifest, a.parse_run, a.lang, a.centres, a.exclude)
     reps = reps[["case_id", "report_id"]]
     mentions = pd.read_parquet(a.parse_run / f"instances_{a.lang}.parquet")
-    vis = load_visibility(a.vis, mirror_centres=a.mirror_centres, swap_side_centres=a.swap_side_centres)
+    vis = load_visibility(a.vis, mirror_centres=a.mirror_centres, swap_side_centres=a.swap_side_centres,
+                          upper_bone_min_mm3=a.upper_bone_min_mm3)
     types = [t.value for t in FindingType]
-    inst, info = build_instances(reps, mentions, vis, bad_reports, types, region_mode=a.region_mode)
+    inst, info = build_instances(reps, mentions, vis, bad_reports, types, region_mode=a.region_mode,
+                                 upper_gap_rule=a.upper_gap_rule)
 
     rows = []
     multi = inst[inst["n"] >= 2]
@@ -345,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
     inst.to_parquet(out / "instances_nk.parquet", index=False)
     pooled = res[res["group"] == "pooled_double_read"].dropna(subset=["pi_mle"]) if "pi_mle" in res else res.iloc[0:0]
     summary = {"run_id": run_id, "centres": a.centres, "excluded": a.exclude, "mirror_centres": a.mirror_centres,
-               "swap_side_centres": a.swap_side_centres, **info,
+               "swap_side_centres": a.swap_side_centres, "upper_bone_min_mm3": a.upper_bone_min_mm3, **info,
                "n_failed_or_missing_reports": len(bad_reports),
                "types_passing_both_guidance_checks": pooled[pooled.gt_upper_ci_below_0_90 & pooled.gt_ci_width_le_0_30]
                ["finding_type"].tolist() if len(pooled) else []}

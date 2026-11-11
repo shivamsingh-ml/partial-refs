@@ -94,10 +94,11 @@ def fixed_prosthesis_mentions(parse_run: Path, lang: str) -> pd.DataFrame:
 
 
 def tooth_absence_instances(reps: pd.DataFrame, mentions: pd.DataFrame, vis: dict, bad: set,
-                            region_mode: str) -> pd.DataFrame:
+                            region_mode: str, upper_gap_rule: str = "bone") -> pd.DataFrame:
     """T2's assessable ToothAbsence positions with the mask truth (absent = no tooth label there).
     ``mentions`` decides what counts as a mention (see gap_mentions)."""
-    inst, _ = build_instances(reps, mentions, vis, bad, ["ToothAbsence"], region_mode=region_mode)
+    inst, _ = build_instances(reps, mentions, vis, bad, ["ToothAbsence"], region_mode=region_mode,
+                              upper_gap_rule=upper_gap_rule)
     inst["truth"] = [s not in vis[c]["teeth"] for c, s in zip(inst["case_id"], inst["slot"])]
     return inst
 
@@ -189,6 +190,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--mirror-centres", default="PFS")
     ap.add_argument("--swap-side-centres", default="PFS")
     ap.add_argument("--region-mode", choices=["omission", "uninformative"], default="omission")
+    ap.add_argument("--upper-gap-rule", choices=["bone", "teeth_or_bone"], default="bone")
+    ap.add_argument("--upper-bone-min-mm3", type=float, default=2000.0)
     ap.add_argument("--min-mm3", type=float, default=0.0, help="smallest implant / crown+bridge label volume that counts")
     ap.add_argument("--phi-max", type=float, default=0.05, help="guidance: upper 95%% limit of phi_mask must stay below")
     ap.add_argument("--n-boot", type=int, default=1000)
@@ -203,9 +206,11 @@ def main(argv: list[str] | None = None) -> int:
     cf = pd.concat([pd.read_parquet(d / "case_features.parquet") for d in a.vis], ignore_index=True)
     if "label_source" in cf and (cf["label_source"] != "tf3_manual").any():
         sys.exit("T3 needs manual masks: --vis must hold only label_source == 'tf3_manual' cases (no centre A)")
-    vis = load_visibility(a.vis, mirror_centres=a.mirror_centres, swap_side_centres=a.swap_side_centres)
-    ta = tooth_absence_instances(reps, gap_mentions(mentions), vis, bad, a.region_mode)
-    ta_strict = tooth_absence_instances(reps, gap_mentions(mentions, ("ToothAbsence",)), vis, bad, a.region_mode)
+    vis = load_visibility(a.vis, mirror_centres=a.mirror_centres, swap_side_centres=a.swap_side_centres,
+                          upper_bone_min_mm3=a.upper_bone_min_mm3)
+    ta = tooth_absence_instances(reps, gap_mentions(mentions), vis, bad, a.region_mode, a.upper_gap_rule)
+    ta_strict = tooth_absence_instances(reps, gap_mentions(mentions, ("ToothAbsence",)), vis, bad, a.region_mode,
+                                        a.upper_gap_rule)
     sets = {("ToothAbsence", "tooth, all permanent"): ta,
             ("ToothAbsence", "tooth, without third molars"): ta[~ta["slot"].str.endswith("8")],
             ("ToothAbsence", "tooth, ToothAbsence coding only"): ta_strict,
@@ -233,7 +238,8 @@ def main(argv: list[str] | None = None) -> int:
                "phi_mask_hi": dict(zip(head["finding_type"], head["phi_mask_hi"].round(4))),
                "guidance_overlap_2_of_3": bool(complete and head["ci_overlap"].sum() >= 2),
                "guidance_phi_hi_le_max": bool(complete and (head["phi_mask_hi"] <= a.phi_max).all()),
-               "min_mm3": a.min_mm3, "region_mode": a.region_mode, "n_failed_or_missing_reports": len(bad)}
+               "min_mm3": a.min_mm3, "region_mode": a.region_mode, "upper_gap_rule": a.upper_gap_rule,
+               "upper_bone_min_mm3": a.upper_bone_min_mm3, "n_failed_or_missing_reports": len(bad)}
     run_id = make_run_id(a.tag)
     out = a.results_dir / "propensity" / run_id
     out.mkdir(parents=True, exist_ok=False)

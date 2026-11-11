@@ -203,3 +203,48 @@ def test_region_reader_stays_informative_for_teeth_it_calls_present_and_omission
     inst2, info2 = build_instances(reports, mentions, {"P001": v}, set(), ["ToothAbsence"])   # default = main (B)
     r2 = inst2.set_index("slot")
     assert (r2.loc["16", "n"], r2.loc["16", "k"]) == (2, 1) and info2["reader_slot_pairs_uninformative_by_region"] == 0
+
+
+def test_upper_gap_needs_upper_jaw_bone():
+    """2026-11-11: two upper molar tips in a short scan do not put the whole upper jaw in the picture."""
+    v = vis_case(teeth={"17", "27", "36", "46"}, upper_bone=False, quadrant_edge={q: False for q in "1234"})
+    assert v["upper"]                                                       # old rule: upper arch "in scan"
+    assert not is_visible(v, "ToothAbsence", "16")                          # gap, no bone: not visible
+    assert is_visible(v, "ToothAbsence", "16", upper_gap_rule="teeth_or_bone")   # previous rule kept
+    assert is_visible(v, "ProstheticDevice", "17")                          # slot with a mask tooth still counts
+    assert is_visible(v, "Caries", "17") and not is_visible(v, "Caries", "16")
+    assert is_visible(v, "ToothAbsence", "37")                              # lower jaw unchanged
+    assert is_visible(vis_case(teeth={"17", "27"}, upper_bone=True), "ToothAbsence", "16")
+    assert is_visible(vis_case(), "ToothAbsence", "17")                     # no "upper_bone" key: old behaviour
+    assert is_visible(v, "JawAtrophy", "QuadrantI")                         # quadrant types unchanged
+
+
+def test_load_visibility_sets_upper_bone(tmp_path):
+    cf = pd.DataFrame({"case_id": ["P001", "P002", "P003"], "label_found": [True, True, True],
+                       "maxilla_vox": [0, 50000, 900], "maxilla_mm3": [0.0, 2500.0, 40.0],
+                       "mandible_vox": [9000, 9000, 9000]})
+    tf = pd.DataFrame({"case_id": ["P001", "P002", "P003"], "fdi": [17, 17, 27], "present": [True, True, True],
+                       "root_tip_cut": [True, False, True]})
+    cf.to_parquet(tmp_path / "case_features.parquet")
+    tf.to_parquet(tmp_path / "tooth_features.parquet")
+    v = load_visibility([tmp_path], mirror_centres="P")
+    assert v["P001"]["upper"] and not v["P001"]["upper_bone"] and v["P002"]["upper_bone"]
+    assert v["P003"]["upper"] and not v["P003"]["upper_bone"]               # thin strip of bone: below 2000 mm3
+    assert v["P003"]["teeth"] == {"17"}                                     # mirrored 27 -> 17, still upper
+    open_edges = {**v["P003"], "quadrant_edge": {q: False for q in "1234"}}     # isolate the bone condition
+    assert not is_visible(open_edges, "ToothAbsence", "16")
+    assert is_visible({**open_edges, "upper_bone": True}, "ToothAbsence", "16")
+    assert load_visibility([tmp_path], upper_bone_min_mm3=0)["P003"]["upper_bone"]
+    with pytest.raises(ValueError):
+        is_visible(v["P003"], "ToothAbsence", "16", upper_gap_rule="Bone")
+
+
+def test_build_instances_upper_gap_rule_both_paths():
+    reports = pd.DataFrame({"case_id": ["P001", "P001"], "report_id": ["a", "b"]})
+    mentions = pd.DataFrame({"case_id": ["P001"], "report_id": ["a"], "finding_type": ["ToothAbsence"], "slot": ["16"]})
+    vis = {"P001": vis_case(teeth={"17", "27", "36"}, upper_bone=False, quadrant_edge={q: False for q in "1234"})}
+    new, info = build_instances(reports, mentions, vis, set(), ["ToothAbsence"])
+    old, _ = build_instances(reports, mentions, vis, set(), ["ToothAbsence"], upper_gap_rule="teeth_or_bone")
+    assert not (new["slot"] == "16").any() and info["mentions_on_invisible_slots"] == {"ToothAbsence": 1}
+    assert old.loc[old.slot == "16", ["n", "k"]].values.tolist() == [[2, 1]]
+    assert set(new.slot) == set(old.slot) - {s for s in old.slot if s[0] in "12" and s not in {"17", "27"}}

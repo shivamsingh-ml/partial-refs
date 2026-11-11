@@ -47,7 +47,8 @@ def scan_matrices(vis: dict[str, dict]) -> tuple[list[str], np.ndarray, np.ndarr
     for i, c in enumerate(cases):
         for t in PERMANENT:
             T[i, IDX[t]] = t in vis[c]["teeth"]
-            A[i, IDX[t]] = T[i, IDX[t]] or is_visible(vis[c], "ToothAbsence", t)
+            # previous visibility rule pinned, so earlier report-scan-match results stay reproducible
+            A[i, IDX[t]] = T[i, IDX[t]] or is_visible(vis[c], "ToothAbsence", t, upper_gap_rule="teeth_or_bone")
     return cases, T, A
 
 

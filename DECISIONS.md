@@ -715,3 +715,17 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   if the hypothesis holds. ProstheticDevice: 10 double-read cases where both readers name a fixed
   prosthesis and the mask has no crown/bridge label go to Shivam for a visual check (mask gap or
   parser/reader error); the case list is kept locally, not in the repo.
+- **Visibility rule for empty upper-jaw positions (Shivam, 2026-11-11).** Shivam's visual check of short
+  centre-P scans: where the mask has only a few upper teeth and no upper jaw bone, only the tips of those
+  teeth reach into the picture and the rest of the upper jaw is not scanned (in another such scan both
+  readers also state that the maxilla is not assessable). The old rule ("upper arch in the scan" = maxilla
+  label OR any upper mask tooth) therefore counted unscanned upper positions as visible gaps. New main rule
+  (`--upper-gap-rule bone`): for ToothAbsence, DentalImplant, ProstheticDevice, PostExtractionSocket and
+  RootResidue, an upper position WITHOUT a mask tooth is visible only if the maxilla label has at least
+  2000 mm³ (`--upper-bone-min-mm3`; chosen from image data only: just below the smallest maxilla of the tall
+  centre-F scans, 2495 mm³, which show the whole upper jaw; P median 819 mm³, i.e. a thin strip). Positions
+  with a mask tooth, the lower jaw, tooth-requiring and quadrant/side types are unchanged. The previous rule
+  stays available (`teeth_or_bone`) and its T2/T3 runs of this morning are the sensitivity analysis.
+  Expected effect from counts before the change: π ToothAbsence 0.70 → ~0.72, ProstheticDevice 0.60 →
+  ~0.61. Reviewed by an independent agent (thin bone strips and centre-A false positives led to the volume
+  threshold; `report_scan_match` keeps the old rule pinned for reproducibility).
