@@ -40,7 +40,8 @@ TYPES = ["ConservativeRestoration", "ProstheticDevice", "EndodonticTreatment", "
 FEATURES = ["n_vox", "pulp_share", "length_mm", "tooth_median_rel_max", "bright_crown", "bright_root",
             "bright_crown_surface", "bright_crown_interior", "bright_pulp", "bright_root_pulp", "bright_root_inner",
             "dark_crown", "prosthetic_label_near_crown", "implant_label_near_root", "apex_p20_rel_bone",
-            "apex_dark_share", "end_bone_contrast", "n_saturated"]
+            "apex_dark_share", "apex_rel_local", "apex_dark_share_local", "bright_crown_deep",
+            "largest_deep_bright_mm3", "end_bone_contrast", "n_saturated"]
 REFERENCE = ["pos_in_quadrant", "upper", "centre_code"]
 EXCLUDE = ["P116", "P117", "P260", "P261", "S0015"]
 

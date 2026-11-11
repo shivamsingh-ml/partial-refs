@@ -51,6 +51,8 @@ CROWN_SHARE = 0.35
 APEX_SHARE = 0.05             # apex point = mean of the outer 5 % of the tooth on the root side
 SHELL_MM = (1.0, 3.0)         # bone voxels 1-3 mm from the tooth surface ...
 APEX_RADIUS_MM = 4.0          # ... and within 4 mm of the apex point
+DEEP_MM = 2.0                 # "deep" = at least 2 mm inside the tooth surface (below the enamel)
+MIDROOT_AT = 0.35             # reference bone: around the point 35 % of the way from the root tip
 
 
 def mirror(fdi: int) -> int:
@@ -107,14 +109,25 @@ def tooth_row(I: np.ndarray, L: np.ndarray, fdi: int, spacing: np.ndarray, scan_
     tooth_med = float(np.median(vals))
     surf = (mb & ~ndimage.binary_erosion(mb))[mb]
     inner = ndimage.binary_erosion(mb, iterations=2)[mb]
-    # around the root tip: voxels 1-3 mm outside the tooth and within 4 mm of the apex point
+    dist_in = ndimage.distance_transform_edt(mb, sampling=spacing)
+    deep = dist_in[mb] >= DEEP_MM
+    # largest connected bright region deep in the crown (fillings, posts, crown cores), in mm3
+    deep_bright = np.zeros(mb.shape, bool)
+    deep_bright[mb] = crown & deep & bright
+    comp, ncomp = ndimage.label(deep_bright)
+    largest_deep_bright_mm3 = (float(np.bincount(comp.ravel())[1:].max()) * float(np.prod(spacing))) if ncomp else 0.0
+    # around the root tip: voxels 1-3 mm outside the tooth and within 4 mm of the apex point, compared with
+    # the same kind of voxels around the mid-root of the same tooth (its own surrounding bone)
     apex_pt = vox[from_root <= APEX_SHARE].mean(axis=0)
     ring = (dist_out >= SHELL_MM[0]) & (dist_out <= SHELL_MM[1])
     rv = np.argwhere(ring) * spacing
-    near = np.linalg.norm(rv - apex_pt, axis=1) <= APEX_RADIUS_MM
     rI, rL = Ib[ring], Lb[ring]
-    keep = near & (np.isin(rL, BONE) | (rL == 0))
-    apex_vals = rI[keep]
+    tissue = np.isin(rL, BONE) | (rL == 0)
+    apex_vals = rI[tissue & (np.linalg.norm(rv - apex_pt, axis=1) <= APEX_RADIUS_MM)]
+    # reference: a band around the root at mid-root height (any root width), +-1.5 mm along the axis
+    mid_proj = proj.min() + (MIDROOT_AT if root_is_low else 1 - MIDROOT_AT) * length
+    mid_vals = rI[tissue & (np.abs((rv - mean) @ ax - mid_proj) <= 1.5)]
+    local_ref = float(np.median(mid_vals)) if len(mid_vals) else np.nan
 
     def frac(x):
         return float(x.mean()) if len(x) else np.nan
@@ -128,11 +141,14 @@ def tooth_row(I: np.ndarray, L: np.ndarray, fdi: int, spacing: np.ndarray, scan_
         "bright_pulp": frac(bright[pulp]), "bright_root_pulp": frac(bright[root & pulp]),
         "bright_root_inner": frac(bright[root & inner]),
         "dark_crown": frac(vals[crown & inner] < 0.6 * tooth_med),
+        "bright_crown_deep": frac(bright[crown & deep]), "largest_deep_bright_mm3": largest_deep_bright_mm3,
         "prosthetic_label_near_crown": frac(np.isin(sL[crown_end], PROSTHETIC)),
         "implant_label_near_root": frac(sL[root_end] == IMPLANT),
         "apex_n": len(apex_vals),
         "apex_p20_rel_bone": float(np.percentile(apex_vals, 20) / bone_med) if len(apex_vals) and bone_med > 0 else np.nan,
         "apex_dark_share": frac(apex_vals < 0.5 * bone_med) if bone_med > 0 else np.nan,
+        "apex_rel_local": float(np.median(apex_vals) / local_ref) if len(apex_vals) and local_ref > 0 else np.nan,
+        "apex_dark_share_local": frac(apex_vals < 0.6 * local_ref) if local_ref > 0 else np.nan,
     }
 
 

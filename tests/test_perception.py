@@ -15,28 +15,30 @@ from partialref.perception.tooth_features import mirror, tooth_row
 SP = np.array([0.3, 0.3, 0.3])
 
 
-def _volume(cap=False, canal_fill=False, dark_apex=False, crown_label=False, root_up=False):
+def _volume(cap=False, canal_fill=False, dark_apex=False, crown_label=False, root_up=False, deep_fill=False):
     """Cylinder tooth 36 along axis 2 (z 10..49), pulp label 136 in its centre, root part (z < 34) in
     bone (label 1). Optional: bright cap on the crown, bright filling in the pulp of the root, dark zone
     just beyond the root tip, a prosthetic crown label (9) over the crown end. root_up flips axis 2."""
-    I = np.zeros((40, 40, 60), np.float32)
+    I = np.zeros((70, 70, 60), np.float32)
     L = np.zeros(I.shape, np.int16)
-    x, y, z = np.meshgrid(np.arange(40), np.arange(40), np.arange(60), indexing="ij")
-    r = np.sqrt((x - 20) ** 2 + (y - 20) ** 2)
-    tooth = (r <= 5) & (z >= 10) & (z < 50)
+    x, y, z = np.meshgrid(np.arange(70), np.arange(70), np.arange(60), indexing="ij")
+    r = np.sqrt((x - 35) ** 2 + (y - 35) ** 2)
+    tooth = (r <= 12) & (z >= 10) & (z < 50)                  # 7 mm wide, 12 mm long
     pulp = tooth & (r <= 1.5) & (z < 45)
     bone = (z < 34) & ~tooth
     I[bone], L[bone] = 900, 1
     I[tooth], L[tooth] = 2000, 36
     I[pulp], L[pulp] = 1000, 136
     if cap:
-        I[tooth & (z >= 44) & (r >= 4)] = 3000
+        I[tooth & (z >= 44) & (r >= 11)] = 3000
+    if deep_fill:                                              # filling deep in the crown, below the surface
+        I[tooth & (z >= 40) & (z < 47) & (r <= 5) & ~pulp] = 3000
     if canal_fill:
         I[pulp & (z < 30)] = 3000
     if dark_apex:                                              # round radiolucency around the root tip
-        I[(np.sqrt((x - 20) ** 2 + (y - 20) ** 2 + (z - 10) ** 2) <= 12) & bone] = 200
+        I[(np.sqrt((x - 35) ** 2 + (y - 35) ** 2 + (z - 10) ** 2) <= 14) & bone] = 200
     if crown_label:                                            # a prosthetic crown wraps the crown end
-        L[((z >= 50) & (z < 53) & (r <= 7)) | ((z >= 40) & (z < 50) & (r > 5) & (r <= 7))] = 9
+        L[((z >= 50) & (z < 53) & (r <= 14)) | ((z >= 40) & (z < 50) & (r > 12) & (r <= 14))] = 9
     I[0, 0, 0] = 3000                                          # scan maximum
     if root_up:
         I, L = I[:, :, ::-1].copy(), L[:, :, ::-1].copy()
@@ -57,7 +59,11 @@ def test_features_find_crown_canal_filling_apex_and_labels_in_either_orientation
     filled = _row(canal_fill=True)
     assert filled["bright_root_pulp"] > 0.5 and filled["bright_crown"] == 0
     apex = _row(dark_apex=True)
-    assert apex["apex_p20_rel_bone"] < 0.5 < plain["apex_p20_rel_bone"] and apex["apex_dark_share"] > 0.2
+    assert apex["apex_rel_local"] < 0.5 < plain["apex_rel_local"] and apex["apex_dark_share_local"] > 0.5
+    assert plain["apex_dark_share_local"] == 0
+    deep = _row(deep_fill=True)
+    assert deep["bright_crown_deep"] > 0.1 and deep["largest_deep_bright_mm3"] > 1
+    assert capped["bright_crown_deep"] == 0 and capped["largest_deep_bright_mm3"] == 0     # enamel-like shell only
     assert _row(crown_label=True)["prosthetic_label_near_crown"] > 0.1 and plain["prosthetic_label_near_crown"] == 0
     flipped = _row(cap=True, root_up=True)
     assert abs(flipped["bright_crown_surface"] - capped["bright_crown_surface"]) < 0.05 and flipped["bright_root"] == 0
