@@ -280,3 +280,82 @@ def test_list_mode_steps_through_the_list_and_bundle_holds_only_listed_reports(s
     assert tgz.name.endswith("-list.tar.gz") and any(n.endswith("review_list.json") for n in names)
     assert info["n_reports"] == 4 and info["n_parse_files"] == 2 and info["review_list"] == lst.name
     assert not any("F002" in n for n in names) and "git_dirty" in info
+
+
+def test_scoped_subset_list_app_and_import(setup, tmp_path, monkeypatch):
+    """First check (2026-11-11): first n base reports, judged only for the mechanical types."""
+    from partialref.review.import_log import check_record
+    from partialref.review.sample import MECHANICAL_TYPES, subset_list
+    tmp, run, _ = setup
+    full = tmp_path / "full.json"
+    full.write_text(json.dumps({"meta": {"seed": 1}, "entries": [
+        {"case_id": "P001", "report_id": "26_101", "stratum": "extra", "judge_types": ["ToothAbsence"]},
+        {"case_id": "P001", "report_id": "21_100", "stratum": "base", "judge_types": None},
+        {"case_id": "F002", "report_id": "27_102", "stratum": "base", "judge_types": None}]}))
+    sub = subset_list(full, 1, ["Caries", "ToothAbsence"])
+    assert [e["report_id"] for e in sub["entries"]] == ["21_100"] and sub["meta"]["scope"] == ["Caries", "ToothAbsence"]
+    assert sub["meta"]["subset_of"] == "full.json" and sub["meta"]["seed"] == 1
+    with pytest.raises(ValueError):
+        subset_list(full, 3, ["Caries"])
+    assert "MandibularCanalCourse" in MECHANICAL_TYPES and "PathologicalLesion" not in MECHANICAL_TYPES
+    lst = tmp_path / "sub.json"
+    lst.write_text(json.dumps(sub))
+    # P001/21_100 has one Caries finding (36) in the fixture; add a finding outside the scope
+    (run / "per_report" / "P001__21_100__en.json").write_text(json.dumps(
+        {"meta": {"case_id": "P001", "report_id": "21_100", "error": None},
+         "extraction": {"findings": [{"finding_type": "Caries", "tooth_ids": ["36"]},
+                                     {"finding_type": "PeriapicalLesion", "tooth_ids": ["46"]}], "not_assessable": []}}))
+    monkeypatch.setenv("REVIEW_LIST", str(lst))
+    at = AppTest.from_file(APP, default_timeout=30).run()
+    at.text_input[0].input("secret-token").run()
+    assert not at.exception and any("Glossary" in e.label for e in at.expander)
+    assert any("ToothAbsence: a tooth is missing" in t.value for t in at.text)
+    labels = [s.label for s in at.selectbox]
+    assert "Caries · 36" in labels and not any(x.startswith("PeriapicalLesion") for x in labels)   # out of scope
+    missed_box = next(s for s in at.selectbox if s.label == "type 1")
+    assert set(missed_box.options) == {"—", "Caries", "ToothAbsence"}
+    next(s for s in at.selectbox if s.label == "Caries · 36").select("correct")      # form: value sent on submit
+    next(b for b in at.button if b.label == "Save this report's decisions").click().run()
+    rec = json.loads((tmp / "review" / run.name / "review_log.jsonl").read_text().splitlines()[-1])
+    assert rec["scope"] == ["Caries", "ToothAbsence"] and [v["finding_type"] for v in rec["verdicts"]] == ["Caries"]
+    known, runs = {("P001", "21_100")}, {run.name}
+    assert check_record(rec, known, runs) == []
+    assert check_record({**rec, "scope": ["free text"]}, known, runs) == ["scope"]
+    assert check_record({**rec, "scope": []}, known, runs) == ["scope"]
+    no_scope = {k: v for k, v in rec.items() if k != "scope"}
+    assert check_record(no_scope, known, runs) == []
+
+
+def test_scoped_records_do_not_count_as_full_review_and_import_rules(tmp_path):
+    from partialref.review.data import done_reports, load_review_list
+    from partialref.review.import_log import check_record
+    from partialref.review.sample import subset_list
+    logged = pd.DataFrame([{"case_id": "P001", "report_id": "a", "scope": ["Caries", "ToothAbsence"]},
+                           {"case_id": "P002", "report_id": "b"}])
+    assert done_reports(logged, None) == {("P002", "b")}                      # full list: scoped record not done
+    assert done_reports(logged, ["Caries"]) == {("P001", "a"), ("P002", "b")}
+    assert done_reports(logged, ["Caries", "DentalImplant"]) == {("P002", "b")}
+    assert done_reports(pd.DataFrame(), None) == set()
+    rec = {"logged_at": "2026-11-11T10:00:00", "parse_run": "run1", "lang": "en", "case_id": "P001",
+           "report_id": "a", "half": "heldout", "scope": ["Caries"], "flags": [],
+           "verdicts": [{"idx": 0, "finding_type": "Caries", "anchor": "36", "verdict": "correct", "correct_slot": None}],
+           "missed": [{"finding_type": "Caries", "slots": ["46"]}]}
+    known, runs = {("P001", "a")}, {"run1"}
+    assert check_record(rec, known, runs) == []
+    assert check_record({**rec, "scope": None}, known, runs) == ["scope"]
+    assert check_record({**rec, "scope": ["Caries", "Caries"]}, known, runs) == ["scope"]
+    assert check_record({**rec, "missed": [{"finding_type": "ToothAbsence", "slots": ["46"]}]}, known, runs) == ["outside_scope"]
+    full = tmp_path / "full.json"
+    full.write_text(json.dumps({"meta": {"seed": 1, "git_sha": "abc", "by_type": {}}, "entries": [
+        {"case_id": "P001", "report_id": "a", "stratum": "base", "judge_types": None}]}))
+    for bad in (0, -1, 2):
+        with pytest.raises(ValueError):
+            subset_list(full, bad, ["Caries"])
+    sub = subset_list(full, 1, ["Caries"])
+    assert "by_type" not in sub["meta"] and sub["meta"]["subset_of_git_sha"] == "abc" and len(sub["meta"]["subset_of_sha256"]) == 64
+    reps = pd.DataFrame({"case_id": ["P001", "P001"], "report_id": ["a", "b"]})
+    bad_list = tmp_path / "bad.json"
+    bad_list.write_text(json.dumps({"meta": {"scope": ["Caries"]}, "entries": [
+        {"case_id": "P001", "report_id": "b", "stratum": "extra", "judge_types": ["ToothAbsence"]}]}))
+    with pytest.raises(ValueError):
+        load_review_list(bad_list, reps)

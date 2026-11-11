@@ -62,12 +62,37 @@ def case_order(reports: pd.DataFrame, half: str, centres: list[str], seed: int, 
     return pd.Series(cases).sample(frac=1, random_state=seed).tolist() if cases else []
 
 
+def review_scope(path: Path) -> list[str] | None:
+    """Finding types the reviewer judges for this list (meta "scope"); None = all types."""
+    from partialref.extract.ontology import FindingType
+    scope = json.loads(Path(path).read_text()).get("meta", {}).get("scope")
+    if scope is not None and not (isinstance(scope, list) and scope and set(scope) <= {t.value for t in FindingType}):
+        raise ValueError("review list: bad scope")
+    return scope
+
+
+def done_reports(logged: pd.DataFrame, list_scope: list[str] | None) -> set[tuple[str, str]]:
+    """(case, report) pairs with a saved record that covers the list's scope: a record without "scope"
+    covers all types; a scoped record covers only its types. So 20 reports checked for 7 types are NOT
+    "done" when the full-scope list is opened later (review 2026-11-11)."""
+    if not len(logged):
+        return set()
+    out = set()
+    rec_scopes = logged["scope"] if "scope" in logged else pd.Series([None] * len(logged), index=logged.index)
+    for c, r, sc in zip(logged["case_id"], logged["report_id"], rec_scopes):
+        rec_all = not isinstance(sc, list | tuple) and (sc is None or pd.isna(sc))
+        if rec_all or (list_scope is not None and set(list_scope) <= set(sc)):
+            out.add((c, r))
+    return out
+
+
 def load_review_list(path: Path, reports: pd.DataFrame) -> list[dict]:
     """Entries of a fixed review list (partialref.review.sample), checked strictly: IDs known to the manifest,
     strata and finding types from fixed lists. The list holds IDs and codes only."""
     from partialref.extract.ontology import FindingType
     types = {t.value for t in FindingType}
     known = set(map(tuple, reports[["case_id", "report_id"]].to_numpy()))
+    scope = review_scope(path)
     entries = json.loads(Path(path).read_text())["entries"]
     for e in entries:
         jt = e.get("judge_types")
@@ -75,6 +100,8 @@ def load_review_list(path: Path, reports: pd.DataFrame) -> list[dict]:
                 or e["stratum"] not in ("base", "extra") or (e["stratum"] == "base") != (jt is None)
                 or (jt is not None and not (isinstance(jt, list) and jt and set(jt) <= types))):
             raise ValueError("review list: bad entry (unknown report, stratum or finding type)")
+    if scope and any(e["judge_types"] and not set(e["judge_types"]) & set(scope) for e in entries):
+        raise ValueError("review list: an extra entry has no finding type inside the scope")
     if len({(e["case_id"], e["report_id"]) for e in entries}) != len(entries):
         raise ValueError("review list: a report is listed twice")
     return entries

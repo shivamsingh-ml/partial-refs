@@ -729,3 +729,15 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   Expected effect from counts before the change: π ToothAbsence 0.70 → ~0.72, ProstheticDevice 0.60 →
   ~0.61. Reviewed by an independent agent (thin bone strips and centre-A false positives led to the volume
   threshold; `report_scan_match` keeps the old rule pinned for reproducibility).
+- **T1 in two steps (Shivam, 2026-11-11).** Shivam is not a dentist; reviewing all finding types is hard.
+  Decision: a small check now, the full T1 before the final runs. Now: the first 20 base reports of the fixed
+  list (seed 20261111), judged only for the 7 "mechanical" types (ToothAbsence, DentalImplant,
+  EndodonticTreatment, ConservativeRestoration, ProstheticDevice, Caries, MandibularCanalCourse: tooth number
+  plus plain wording); question: is there a systematic parser error? No error rates from this step. Later:
+  the full list (113 reports), a dentist for the other 8 types if one is available, otherwise those types are
+  reported as "parser not verified" and kept out of headline claims. The gate is recorded as "T1 passed
+  provisionally" until then. Claude does not review held-out reports (DUA rule; methodologically the human
+  anchor). Tooling: `review.sample --subset-of <list> --first-base 20` writes a scoped list; the app judges
+  only the scope's types and stores "scope" in each record; a scoped record does not mark a report as done
+  for a list with a wider scope. Analysis rules (reviewed): a record is evidence only for its scope's types;
+  "last saved record counts" per (report, finding type); precision and recall per type with their own n.

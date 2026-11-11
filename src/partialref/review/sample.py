@@ -12,6 +12,15 @@ Inputs and output are IDs and codes only (never report text). Output: one JSON f
 
     python -m partialref.review.sample --parse-run results/extract/<run> --manifest results/manifest/<run> \
         [--n-base 60] [--target 15] [--seed 20261111] [--out-dir results/review/lists]
+
+Subset for a first check (2026-11-11): the first n BASE entries of an existing list, judged only for the
+"mechanical" finding types (tooth number + plain wording; no dental knowledge needed). Same reports, same
+order. Rules for the later analysis (review 2026-11-11): a record is evidence only for the types in its
+"scope" (no scope = all types); "last saved record counts" applies per (report, finding type), so a later
+full-scope record does not erase, and a scoped re-save does not drop, the other types; precision and
+recall are reported per type with their own n.
+
+    python -m partialref.review.sample --subset-of results/review/lists/<list>.json --first-base 20
 """
 
 from __future__ import annotations
@@ -29,6 +38,8 @@ from partialref.extract.ontology import FindingType
 from partialref.extract.score_parser import parser_half
 from partialref.provenance import git_state
 
+MECHANICAL_TYPES = ["ToothAbsence", "DentalImplant", "EndodonticTreatment", "ConservativeRestoration",
+                    "ProstheticDevice", "Caries", "MandibularCanalCourse"]
 DEFAULT_EXCLUDE = ["P116", "P117", "P260", "P261", "S0015"]   # misfiled reports; possibly upside down
 TYPES = [t.value for t in FindingType]
 
@@ -88,10 +99,31 @@ def draw(pop: pd.DataFrame, instances: pd.DataFrame, n_base: int, target: int, s
     return entries, {"base_by_centre": alloc, "by_type": counts}
 
 
+def subset_list(path: Path, first_base: int, scope: list[str]) -> dict:
+    """The first ``first_base`` base entries of a review list, with meta.scope = the types to judge."""
+    import hashlib
+    raw = Path(path).read_bytes()
+    full = json.loads(raw)
+    base = [e for e in full["entries"] if e["stratum"] == "base"]
+    if not 1 <= first_base <= len(base):
+        raise ValueError(f"--first-base must be between 1 and {len(base)} (base entries of the list)")
+    if not scope or len(set(scope)) != len(scope):
+        raise ValueError("scope must be a non-empty list of distinct finding types")
+    fm = full["meta"]
+    keep = {k: fm[k] for k in ("parse_run", "lang", "half", "centres", "exclude", "seed") if k in fm}
+    meta = {**keep, "subset_of": Path(path).name, "subset_of_sha256": hashlib.sha256(raw).hexdigest(),
+            "subset_of_git_sha": fm.get("git_sha"), "first_base": first_base, "scope": list(scope),
+            "n_entries": first_base, "n_extra": 0, "created": time.strftime("%Y-%m-%dT%H:%M:%S"), **git_state()}
+    return {"meta": meta, "entries": base[:first_base]}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--parse-run", required=True, type=Path)
-    ap.add_argument("--manifest", required=True, type=Path)
+    ap.add_argument("--parse-run", type=Path)
+    ap.add_argument("--manifest", type=Path)
+    ap.add_argument("--subset-of", type=Path, help="existing list: write its first --first-base base entries")
+    ap.add_argument("--first-base", type=int, default=20)
+    ap.add_argument("--scope", default=",".join(MECHANICAL_TYPES), help="types to judge in the subset")
     ap.add_argument("--lang", default="en")
     ap.add_argument("--half", default="heldout", choices=["heldout", "tune", "all"])
     ap.add_argument("--centres", default="PFS")
@@ -101,6 +133,21 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--seed", default=20261111, type=int)
     ap.add_argument("--out-dir", default=Path("results/review/lists"), type=Path)
     a = ap.parse_args(argv)
+    if a.subset_of:
+        scope = [x for x in a.scope.split(",") if x]
+        if not set(scope) <= set(TYPES):
+            ap.error("unknown finding type in --scope")
+        sub = subset_list(a.subset_of, a.first_base, scope)
+        tag = "mechanical" if scope == MECHANICAL_TYPES else "scoped"
+        out = a.subset_of.with_name(a.subset_of.stem + f"-first{a.first_base}-{tag}.json")
+        if out.exists():
+            ap.error(f"{out} exists; remove it first (a review list is never overwritten)")
+        out.write_text(json.dumps(sub, indent=1))
+        print(json.dumps(sub["meta"], indent=1))
+        print(f"review list: {out}")
+        return 0
+    if not (a.parse_run and a.manifest):
+        ap.error("--parse-run and --manifest are required (or use --subset-of)")
     reps = pd.read_parquet(a.manifest / "reports.parquet")
     exclude = [x for x in a.exclude.split(",") if x]
     pop = population(reps[reps["lang"] == a.lang], a.half, a.centres, exclude)

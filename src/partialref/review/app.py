@@ -29,18 +29,43 @@ from partialref.review.data import (
     REPORT_FLAGS,
     VERDICTS,
     case_order,
+    done_reports,
     finding_rows,
     load_parse,
     load_reports,
     load_review_list,
     log_review,
     read_log,
+    review_scope,
 )
 
 PERMANENT = [f"{q}{i}" for q in (1, 2, 3, 4) for i in range(1, 9)]
 SLOT_CHOICES = PERMANENT + ["Left", "Right", "QuadrantI", "QuadrantII", "QuadrantIII", "QuadrantIV",
                             "UpperArch", "LowerArch"]
 MISSED_ROWS = 6
+GLOSSARY = """Finding types in this check (made-up example wording, not from the data):
+- ToothAbsence: a tooth is missing ("36 missing", "edentulous upper jaw", "agenesis of 12")
+- DentalImplant: metal screw replacing a tooth root ("implant in position 46")
+- EndodonticTreatment: root canal treatment / root canal filling ("endodontic treatment of 26")
+- ConservativeRestoration: a filling ("composite filling on 14", "amalgam restoration 37")
+- ProstheticDevice: crown, bridge, post-and-core, denture ("crown on 47", "bridge from 34 to 36")
+- Caries: tooth decay ("caries on 15", "carious lesion of 46")
+- MandibularCanalCourse: course of the nerve canal in the lower jaw ("canals have a regular course")
+
+Tooth numbers (FDI, patient's view): first digit 1 upper right, 2 upper left, 3 lower left, 4 lower right;
+second digit 1 = front tooth ... 8 = wisdom tooth.
+
+Coding rules of the parser (judge against these, not against your own habits):
+- A bridge lists every tooth from the first to the last abutment; each pontic (replaced tooth) is ALSO a
+  ToothAbsence.
+- A residual root or an impacted / unerupted tooth is NEVER ToothAbsence (other types, not in this check).
+- Crown + post-and-core on one tooth = two ProstheticDevice findings.
+- An implant is DentalImplant only (no ToothAbsence for that position). Planned implants are not findings.
+- "Not included in the scan" describes the scan, never ToothAbsence.
+
+Verdict per finding: correct | wrong_slot (right finding, wrong tooth/side: pick the right one) |
+not_in_report (the report does not say this) | unclear. Then add findings OF THESE TYPES that the report
+states but the parser did not list."""
 
 
 def args() -> argparse.Namespace:
@@ -79,12 +104,15 @@ def main() -> None:
     reports = load_reports(a.manifest, a.lang)
     log_dir = a.log_root / a.parse_run.name
     entries = load_review_list(a.review_list, reports) if a.review_list else None
+    scope = review_scope(a.review_list) if a.review_list else None
 
     with st.sidebar:
         st.markdown(f"**Parse run** `{a.parse_run.name}`  \n**Language** {a.lang}")
         if entries is not None:
             n_extra = sum(e["stratum"] == "extra" for e in entries)
             st.markdown(f"**Review list** {len(entries)} reports ({len(entries) - n_extra} base, {n_extra} extra)")
+            if scope:
+                st.markdown(f"**Scope** {len(scope)} finding types only (see the glossary)")
             order = [e["case_id"] for e in entries]
             order_key = ("list", str(a.review_list))
         else:
@@ -112,7 +140,8 @@ def main() -> None:
             st.caption("That case is not in the review list." if entries is not None else
                        "That case is not in the current filter (half / centres / multi-report).")
         logged = read_log(log_dir)
-        done = set(map(tuple, logged[["case_id", "report_id"]].to_numpy())) if len(logged) else set()
+        done = done_reports(logged, scope) if entries is not None else \
+            (set(map(tuple, logged[["case_id", "report_id"]].to_numpy())) if len(logged) else set())
         c1, c2 = st.columns(2)
         if c1.button("◀ Previous", width="stretch"):
             st.session_state["pos"] = max(0, st.session_state["pos"] - 1)
@@ -146,6 +175,9 @@ def main() -> None:
                     "this type; missed findings are not entered for extra reports.")
     else:
         st.markdown(f"## {case}  ·  centre {case[0]}  ·  {len(rep)} report(s)  ·  half: {rep['half'].iloc[0]}")
+    if scope:
+        with st.expander("Glossary: the finding types of this check", expanded=True):
+            st.text(GLOSSARY)
     with st.expander("Finding type definitions and coding rules (the parser's own instructions)"):
         st.text(SYSTEM_PROMPT.split("- Use only these qualifier names")[0])
 
@@ -182,15 +214,21 @@ def main() -> None:
                 if flags:
                     st.caption("Parser notes: " + ", ".join(f"{k}={v}" for k, v in flags.items()))
                 if log_on:
-                    log_form(log_dir, a, case, r.report_id, r.half, fr, judge_types, strict=entries is not None)
+                    log_form(log_dir, a, case, r.report_id, r.half, fr, judge_types, strict=entries is not None,
+                             scope=scope)
 
 
 def log_form(log_dir: Path, a: argparse.Namespace, case: str, report_id: str, half: str, fr: pd.DataFrame,
-             judge_types: list[str] | None = None, strict: bool = False) -> None:
+             judge_types: list[str] | None = None, strict: bool = False, scope: list[str] | None = None) -> None:
     """judge_types: only findings of these types get a verdict box and no missed findings are asked (extra
-    reports of a review list). strict (review list): warn when a finding to judge was left at '—'."""
+    reports of a review list). scope (scoped list): only these types get verdict boxes and only these can be
+    entered as missed; the record carries the scope. strict (review list): warn when a finding to judge was
+    left at '—'."""
     if judge_types:
         fr = fr[fr["finding_type"].isin(judge_types)]
+    if scope:
+        fr = fr[fr["finding_type"].isin(scope)]
+    missed_types = scope or [x.value for x in FindingType]
     with st.form(key=f"log-{case}-{report_id}"):
         st.markdown("**Decision for every finding** — a finding left at '—' counts as not judged" if strict else
                     "**Log a decision (optional)** — leave a finding at '—' to skip it")
@@ -207,15 +245,17 @@ def log_form(log_dir: Path, a: argparse.Namespace, case: str, report_id: str, ha
             st.markdown(f"Findings the parser missed (up to {MISSED_ROWS}; one row per finding type, several slots allowed)")
             for i in range(MISSED_ROWS):
                 c1, c2 = st.columns([1, 2])
-                t = c1.selectbox(f"type {i + 1}", ["—"] + [x.value for x in FindingType], key=f"mt-{case}-{report_id}-{i}")
+                t = c1.selectbox(f"type {i + 1}", ["—"] + missed_types, key=f"mt-{case}-{report_id}-{i}")
                 s = c2.multiselect(f"slots {i + 1}", SLOT_CHOICES, key=f"ms-{case}-{report_id}-{i}")
                 if t != "—":
                     missed.append({"finding_type": t, "slots": s})
         rflags = st.multiselect("Report flags", REPORT_FLAGS, key=f"rf-{case}-{report_id}")
         if st.form_submit_button("Save this report's decisions"):
-            f = log_review(log_dir, {"parse_run": a.parse_run.name, "lang": a.lang, "case_id": case,
-                                     "report_id": report_id, "half": half, "verdicts": verdicts,
-                                     "missed": missed, "flags": rflags})
+            rec = {"parse_run": a.parse_run.name, "lang": a.lang, "case_id": case, "report_id": report_id,
+                   "half": half, "verdicts": verdicts, "missed": missed, "flags": rflags}
+            if scope:
+                rec["scope"] = list(scope)
+            f = log_review(log_dir, rec)
             st.success(f"Saved ({len(verdicts)} verdicts, {len(missed)} missed, {len(rflags)} flags) → {f.name}")
             if strict and len(verdicts) < len(fr):
                 st.warning(f"{len(fr) - len(verdicts)} finding(s) have no verdict yet. Choose one for each and "

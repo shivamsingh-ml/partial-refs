@@ -1,6 +1,7 @@
 """Validate a review log brought back from Shivam's laptop before it is used (IDs and codes only).
 
-Checks every record strictly: exactly the expected fields with the expected types; known (case, report) in
+Checks every record strictly: exactly the expected fields (plus an optional "scope": the finding types the
+reviewer judged, set by a scoped review list) with the expected types; known (case, report) in
 the manifest; parse run = an existing folder under results/extract; lang/half/timestamp in fixed formats;
 verdict / flag / finding-type codes and slots from fixed lists; anchors only ids/sides/regions. Rejections
 are reported as line numbers and error codes only (content is never echoed). Valid
@@ -45,8 +46,20 @@ def _str(x, allowed=None, pattern=None) -> bool:
 def check_record(rec: dict, known: set[tuple[str, str]], known_runs: set[str]) -> list[str]:
     """Error CODES only (never echo content). Strict types: anything unexpected is rejected."""
     errs = []
-    if set(rec) != TOP:
+    if set(rec) not in (TOP, TOP | {"scope"}):
         errs.append("fields")
+    sc = rec.get("scope")
+    if "scope" in rec:                      # only written by a scoped list: a non-empty list of distinct type codes
+        if not (isinstance(sc, list) and sc and all(_str(x, TYPES) for x in sc) and len(set(sc)) == len(sc)):
+            errs.append("scope")
+        else:                               # nothing judged or entered outside the scope
+            inside = set(sc)
+            v_out = isinstance(rec.get("verdicts"), list) and any(
+                isinstance(e, dict) and e.get("finding_type") not in inside for e in rec["verdicts"])
+            m_out = isinstance(rec.get("missed"), list) and any(
+                isinstance(e, dict) and e.get("finding_type") not in inside for e in rec["missed"])
+            if v_out or m_out:
+                errs.append("outside_scope")
     if not (_str(rec.get("case_id")) and _str(rec.get("report_id"))) or (rec["case_id"], rec["report_id"]) not in known:
         errs.append("unknown_report")
     if not _str(rec.get("parse_run"), known_runs, RUN_RE):
