@@ -751,3 +751,21 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   estimator that does not exist yet (the HANDOFF §2.2 formula fails for skilled systems). Conditions for
   stage 2: REPORT_GT §8 (full T1 before final runs; parser v3.3 before LoRA retraining; canal per report;
   centre-level π; π refitted per fold).
+- **S0015 resolved (Shivam's visual check, 2026-11-11).** The scan shows only the lower jaw (both readers
+  also state that the maxilla is not assessable; the mask has no upper teeth), but the mask carries about
+  2200 mm³ labelled as upper jaw bone, i.e. part of the mandible is labelled as maxilla. The earlier
+  "stored upside down" suspicion came from that label. S0015 stays excluded from the π analyses (default
+  exclusion; it would also fool the upper-jaw visibility rule), never enters the test set, and stays out of
+  the segmentation training list.
+- **Split v1 (2026-11-11; reviewed by an independent agent).** `configs/splits/v1/` from
+  `partialref.data.splits`: locked test 107 P/F/S cases (20 %, 74 double-read), five development folds of
+  84, centre A (95) external and locked. Cells centre × single/double-read; inside a cell ordered by "teeth
+  in both jaws", total tooth count and a seeded random number (seed 20261110), test drawn by systematic
+  sampling. Never in the test set: P116/P117/P260/P261, S0015 and the cases with an open visual check
+  (F028, F055, P230, S0019, P192, P242); cases are not moved after the commit. Decisions: 20 % (development
+  is the bottleneck; 25 % narrows test intervals by ~10 %); tooth count as sort key (balances finding
+  prevalence; maxilla ≥ 2000 mm³ is almost a centre label, scan height constant within centres). Rules:
+  leave-one-centre-out uses development cases only; no tuning on centre A scores; the T1 review records
+  never replace parser labels for test cases and the parser correction for test-set π comes from
+  development-case records (all records as sensitivity); the segmentation training list is frozen at
+  stage 2 from development cases plus the 5 TF3-only scans, without S0015 and unresolved cases.
