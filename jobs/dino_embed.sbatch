@@ -9,11 +9,12 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=logs/%x-%j.out
 # DINO embeddings of tooth slices (PAPER_PLAN step 2). Inference only; small model, one A100 (40 GB) is ample.
-#   sbatch jobs/dino_embed.sbatch <slices run dir> <model dir, e.g. models/dinov2-base> [LIMIT]
+#   sbatch jobs/dino_embed.sbatch <slices run dir> <model dir, e.g. models/dinov2-base> [LIMIT] [BATCH]
+#   small GPU (e.g. a 1g.5gb MIG slice): pass --qos=1g.5gb --gres=gpu:1g.5gb:1 --mem=16G and BATCH=32
 set -euo pipefail
 PROJECT_DIR=/msc/home/ssingh54/partial-refs; cd "$PROJECT_DIR"
 [ $# -ge 2 ] || { echo "usage: sbatch jobs/dino_embed.sbatch <slices run> <model dir> [limit]" >&2; exit 2; }
-SLICES=$1; MODEL=$2; LIMIT=${3:-0}
+SLICES=$1; MODEL=$2; LIMIT=${3:-0}; BATCH=${4:-64}
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONHASHSEED=0
 set +u; source "$HOME/miniconda3/etc/profile.d/conda.sh"; conda activate pr_train; set -u
 SUFFIX=""; if [ "$LIMIT" != 0 ]; then SUFFIX="-limit$LIMIT"; fi
@@ -21,5 +22,5 @@ DIRTY=""; if [ -n "$(git status --porcelain -- src jobs)" ]; then DIRTY="-dirty"
 OUT=results/perception/$(date +%Y%m%d-%H%M)-$(git rev-parse --short HEAD)${DIRTY}-dino-$(basename "$MODEL")${SUFFIX}-${SLURM_JOB_ID}
 echo "node=$(hostname) job=$SLURM_JOB_ID start=$(date -Is) slices=$SLICES model=$MODEL out=$OUT"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
-python src/partialref/perception/dino_embed.py --slices "$SLICES" --model "$MODEL" --out "$OUT" --limit "$LIMIT"
+python src/partialref/perception/dino_embed.py --slices "$SLICES" --model "$MODEL" --out "$OUT" --limit "$LIMIT" --batch "$BATCH"
 echo "done=$(date -Is)"
