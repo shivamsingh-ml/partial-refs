@@ -235,3 +235,45 @@ def test_saved_predictions_are_out_of_fold_and_reproduce_the_reported_auc():
     assert abs(auc("dino") - res_e.loc["dino", "auc_features"]) < 1e-12
     lab = P[P.feature_set == "basic"].merge(df[["case_id", "fdi_report", "Caries"]], on=["case_id", "fdi_report"])
     assert len(lab) == n and (lab["y"] == lab["Caries"]).all()             # each prediction sits on its own tooth
+
+
+def test_human_reference_pairs_reports_and_compares_on_the_same_teeth():
+    from partialref.perception.human_reference import compare, pair_table
+    teeth = pd.DataFrame({"case_id": ["P001"] * 3 + ["P002"] * 2 + ["P003"], "fdi_report": [16, 26, 36, 16, 46, 11]})
+    reps = pd.DataFrame({"case_id": ["P001", "P001", "P002", "P002", "P003"], "report_id": ["r1", "r2", "r3", "r4", "r5"],
+                         "report_x": [1, 2, 1, 14, 1]})
+    inst = pd.DataFrame({"case_id": ["P001", "P001", "P001", "P002"], "report_id": ["r1", "r1", "r2", "r3"],
+                         "finding_type": ["Caries", "Caries", "Caries", "Caries"], "slot": ["16", "36", "16", "46"]})
+    silent = {("P", "14", "Caries")}                                         # author 14 never reports caries
+    pt = pair_table(teeth, reps, inst, silent)
+    c = pt[pt["finding_type"] == "Caries"].set_index(["rep_a", "rep_b", "fdi_report"])
+    assert len(c) == 6                                                        # P001: 3 teeth x 2 directions; P002 silent
+    assert c.loc[("r1", "r2", 36), "a"] == 1 and c.loc[("r1", "r2", 36), "b"] == 0
+    assert c.loc[("r2", "r1", 16), ["a", "b"]].tolist() == [1, 1]
+    assert "P003" not in set(pt["case_id"])                                   # single report: no pair
+    assert "P002" not in set(pt.loc[pt["finding_type"] == "Caries", "case_id"])
+    assert len(pt[pt["finding_type"] == "ProstheticDevice"]) == 10             # P002 is silent on caries only
+    b = np.array([1, 1, 0, 0, 0, 0])
+    r = compare(np.array([1, 0, 1, 0, 0, 0]), b, np.array([0.9, 0.8, 0.1, 0.2, 0.3, 0.4]))
+    assert r["sens_human"] == 0.5 and r["fpr_human"] == 0.25 and r["auc_model"] == 1.0 and r["sens_model_at_fpr_human"] == 1.0
+
+
+def test_human_reference_weights_three_reports_and_interpolates():
+    from partialref.perception.human_reference import bootstrap, compare, pair_table
+    teeth = pd.DataFrame({"case_id": ["P001", "P002"], "fdi_report": [16, 16]})
+    reps = pd.DataFrame({"case_id": ["P001"] * 3 + ["P002"] * 2, "report_id": ["r1", "r2", "r3", "r4", "r5"],
+                         "report_x": [1, 2, 3, 1, 14]})
+    inst = pd.DataFrame({"case_id": ["P001"], "report_id": ["r1"], "finding_type": ["Caries"], "slot": ["16"]})
+    pt = pair_table(teeth, reps, inst, {("P", "14", "Caries")})
+    c = pt[pt["finding_type"] == "Caries"]
+    assert len(c) == 6 and np.allclose(c["w"], 1 / 6) and set(c["case_id"]) == {"P001"}   # P002: one side silent
+    assert not c["same_author"].any()
+    b = np.array([1, 1, 0, 0, 0, 0])
+    r = compare(np.array([1, 0, 0, 0, 0, 0]), b, np.array([0.9, 0.3, 0.5, 0.2, 0.1, 0.05]))
+    assert r["fpr_human"] == 0 and r["sens_model_at_fpr_human"] == 0.5 and r["d_sens"] == 0     # between ROC points
+    rt = compare(np.array([1, 0, 0, 0, 0, 0]), b, np.full(6, 0.5))                              # all tied
+    assert rt["auc_model"] == 0.5 and rt["sens_model_at_fpr_human"] == 0
+    m = pd.DataFrame({"case_id": [f"P{i // 2:03d}" for i in range(40)], "a": np.tile([1, 0], 20), "b": np.tile([1, 0], 20),
+                      "p": np.tile([0.9, 0.1], 20), "w": 1.0})
+    bs = bootstrap(m, n_boot=50, seed=0)
+    assert bs["n_boot_used"] == 50 and bs["d_sens"] == 0 and bs["d_sens_lo"] == bs["d_sens_hi"] == 0

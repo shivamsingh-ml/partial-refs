@@ -864,3 +864,17 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   [0.001, 0.081], PeriapicalLesion +0.032 [−0.003, 0.066], ProstheticDevice +0.014 [−0.006, 0.033] (AP +0.053
   [0.022, 0.082]), fillings and endo 0. Decision: frozen DINO is not kept in the pipeline; caries and
   root-tip infection intervals are about ±0.04 wide (124 and 90 positive teeth).
+- **The per-tooth model is below a second dentist at the dentist's strict threshold, except for crowns (2026-11-12).**
+  `partialref.perception.human_reference` on `results/perception/20261111-2316-68510f0-tooth-classifier-dinov2-base-preds`
+  (feature set basic+histogram; output `human_reference-basic+histogram/`, run before this commit, provenance dirty):
+  267 double-read dev cases, 537 reports (3 cases with 3 reports, each case-tooth weighted 1); one report used as
+  yes/no predictor of the other; 14,309 rebuilt labels all equal the classifier's labels. Sensitivity against the
+  other report, dentist vs model at the dentist's false-positive rate [95 % case-bootstrap interval of the
+  difference]: ConservativeRestoration 0.76 vs 0.41 [−0.51, −0.23] at FPR 3.2 %; Caries 0.53 vs 0.21 [−0.53, −0.11]
+  at 0.7 %; EndodonticTreatment 0.90 vs 0.78 [−0.43, −0.04] at 0.7 %; PeriapicalLesion 0.32 vs 0.20 [−0.28, 0.03]
+  at 1.0 % (dentists agree poorly: label ceiling); ProstheticDevice 0.63 vs 0.61 [−0.12, 0.08]. The comparison
+  favours the dentist (shared omissions, union training labels, silent authors found on the same double reads,
+  recurring annotators); still, the module has not reached the label ceiling. Centre S (32 cases) is much weaker
+  for the model (e.g. endo 0.22 vs dentist 0.90): to check. Geometry module (canal, impacted teeth, bone loss)
+  judged a digression until the per-tooth chain is shown end to end (Shivam, 2026-11-12); next: top false
+  alarms viewed by Shivam, VLM-alone baseline on the same teeth, centre S.
