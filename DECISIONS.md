@@ -800,3 +800,25 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   a human; parsing and metric models stay local unless Shivam decides otherwise; prompt examples stay
   synthetic. Shivam states that he signed no separate agreement when obtaining the data, so the licence
   above is the only set of terms.
+- **Reader silence on fillings confirmed (2026-11-12).** Follow-up of the reader-specific entry: in the
+  tune-half Italian reports of centre F `report_x` 14, the filling-like word hits (15 of 30 reports) are
+  all "ricostruzione protesica" (prosthetic crown/bridge reconstruction, often on root-canal-treated teeth
+  or implants), none a conservative restoration. With the English word count (7 %) and the parser (0 %),
+  this reader does not report fillings; it is not a parser blind spot. Read in the session under the
+  2026-11-12 data-use rule; no text stored.
+- **Facts from the ODIN 2026 challenge design document (shared by Shivam, 2026-11-12; PDF not in the
+  repo).** (1) Task 1 reports were written by **13 maxillofacial surgeons** (> 5 years); this replaces the
+  "2 radiologists + 6 surgeons" taken from Lumetti et al. (sources differ). About 15 `report_x` values fit
+  13 writers, so `report_x` is plausibly the surgeon (to confirm with the organisers). (2) The task is a
+  **surgical planning report**: dentition (presence/absence, impactions), jaw bone, mandibular canal, sinus,
+  planning cues; fillings and caries are not listed, which fits readers who never report them. (3) Reports
+  were typed or dictated (Whisper, checked live) on a structured web platform; English is a GPT translation,
+  ~10 % of training translations checked by clinicians. (4) **Multiple reports exist for "harder cases,
+  about 30 % of the data"**: the double-read subset is selected, not random. Our copy has 367/622 (59 %)
+  multi-report cases (centre F almost all) — to be reconciled; all π estimates come from this subset, so
+  representativeness must be checked. (5) Hidden test set: 50 cases, one report per case (several
+  annotators converged into one), full field of view; the organisers plan 2nd/3rd annotation rounds to
+  study inter-/intra-observer variability. (6) Logical F1 is computed per case then averaged (likely
+  explains 0.392 vs 0.409 in the audit). (7) Embargo: participants may publish their results elsewhere only
+  6 months after MICCAI 2026 (from about April 2027), except at the ODIN workshop — Shivam to ask the
+  organisers whether this paper is covered. (8) Data licence CC BY-NC-SA, research use (see data-use entry).
