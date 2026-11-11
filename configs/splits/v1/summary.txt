@@ -1,0 +1,9 @@
+       cases   F   P   S  double_read  both_jaws_share  mean_teeth  en_reports
+set                                                                           
+fold0     84  10  66   8           58            0.762        20.3         142
+fold1     84  10  66   8           58            0.750        20.3         143
+fold2     84  10  66   8           58            0.702        19.2         144
+fold3     84  10  65   9           58            0.726        19.7         146
+fold4     84  10  66   8           59            0.750        20.1         147
+test     107  13  83  11           74            0.729        20.0         181
+external_A: 95 cases

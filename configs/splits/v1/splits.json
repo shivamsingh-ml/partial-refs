@@ -1,0 +1,38 @@
+{
+ "seed": 20261110,
+ "test_fraction": 0.2,
+ "k": 5,
+ "manifest": "results/manifest/20261107-1830-c2aa718-manifest",
+ "manifest_cases_sha256": "3038730e940faf9ff255422908a8c328f10caec23802e5cee1b483803580790c",
+ "features": "results/audit/20261107-2050-da2f91d-visibility-features",
+ "features_sha256": "4e62089301794e568da6c8961ed24da2257c48af50d2085668d1ce2790b24a31",
+ "never_test": {
+  "P116": "misfiled reports",
+  "P117": "misfiled reports",
+  "P260": "misfiled reports",
+  "P261": "misfiled reports",
+  "S0015": "possibly stored upside down; visual check open",
+  "F028": "visual check open",
+  "F055": "visual check open",
+  "P230": "visual check open",
+  "S0019": "visual check open",
+  "P192": "visual check open",
+  "P242": "visual check open"
+ },
+ "tf3_only_for_segmentation": [
+  "P120",
+  "P121",
+  "P262",
+  "P263",
+  "P378"
+ ],
+ "counts": {
+  "dev": 420,
+  "test": 107,
+  "external_A": 95
+ },
+ "numpy": "2.5.4",
+ "pandas": "3.1.1",
+ "git_sha": "fa2988e61eb29e65c89cd442b4c67630a87c2cf1",
+ "git_dirty": false
+}
