@@ -11,16 +11,19 @@
 # Report text is only shown in your browser through an SSH tunnel; nothing is saved unless you enable
 # logging in the app (IDs and codes only, results/review/). The access token goes to an owner-only file,
 # not to this log (the home directory is group-readable).
-#   sbatch jobs/review_app.sbatch results/extract/<parse run> [en|it]
+#   sbatch jobs/review_app.sbatch results/extract/<parse run> [en|it] [review list json]
+#   With a review list (partialref.review.sample) the app steps through that fixed list.
 #   then read logs/pr-review-<jobid>.out for the tunnel command; stop with scancel <jobid> when done.
 set -euo pipefail
-[ $# -ge 1 ] || { echo "usage: sbatch jobs/review_app.sbatch <parse run dir> [en|it]" >&2; exit 2; }
+[ $# -ge 1 ] || { echo "usage: sbatch jobs/review_app.sbatch <parse run dir> [en|it] [review list json]" >&2; exit 2; }
 source /msc/home/ssingh54/partial-refs/jobs/env.sh
 cd "$PROJECT_DIR"
 [ -d "$1/per_report" ] || { echo "no per_report/ in $1" >&2; exit 1; }
 export REVIEW_PARSE_RUN=$1 REVIEW_LANG=${2:-en}
 export REVIEW_MANIFEST=results/manifest/20261107-1830-c2aa718-manifest REVIEW_LOG_ROOT=results/review
 unset REVIEW_LOCAL                                   # never inherit local (no-token) mode from the login shell
+unset REVIEW_LIST
+if [ -n "${3:-}" ]; then [ -f "$3" ] || { echo "no review list $3" >&2; exit 1; }; export REVIEW_LIST=$3; fi
 TOKEN_FILE=$HOME/.secrets/review_token_${SLURM_JOB_ID:-manual}
 mkdir -p "$(dirname "$TOKEN_FILE")"; chmod 700 "$(dirname "$TOKEN_FILE")"
 ( umask 077; python -c "import secrets; print(secrets.token_urlsafe(18))" > "$TOKEN_FILE" )

@@ -1,6 +1,7 @@
 """Data access for the report review app (partialref.review.app). No Streamlit here, so it is testable.
 
-Reads the manifest (report paths), one parse run (per-report JSON files) and writes OPTIONAL review logs.
+Reads the manifest (report paths), one parse run (per-report JSON files), an optional fixed review list
+(partialref.review.sample) and writes OPTIONAL review logs.
 Logs contain IDs and codes only, never report text (DUA). They go to results/review/<parse run>/ which is
 git-ignored and not matched by the weekly rsync patterns (*.csv / metrics.json / provenance.json).
 """
@@ -59,6 +60,24 @@ def case_order(reports: pd.DataFrame, half: str, centres: list[str], seed: int, 
     n = r.groupby("case_id")["report_id"].nunique()
     cases = sorted(n[n >= 2].index if only_multi else n.index)
     return pd.Series(cases).sample(frac=1, random_state=seed).tolist() if cases else []
+
+
+def load_review_list(path: Path, reports: pd.DataFrame) -> list[dict]:
+    """Entries of a fixed review list (partialref.review.sample), checked strictly: IDs known to the manifest,
+    strata and finding types from fixed lists. The list holds IDs and codes only."""
+    from partialref.extract.ontology import FindingType
+    types = {t.value for t in FindingType}
+    known = set(map(tuple, reports[["case_id", "report_id"]].to_numpy()))
+    entries = json.loads(Path(path).read_text())["entries"]
+    for e in entries:
+        jt = e.get("judge_types")
+        if (set(e) != {"case_id", "report_id", "stratum", "judge_types"} or (e["case_id"], e["report_id"]) not in known
+                or e["stratum"] not in ("base", "extra") or (e["stratum"] == "base") != (jt is None)
+                or (jt is not None and not (isinstance(jt, list) and jt and set(jt) <= types))):
+            raise ValueError("review list: bad entry (unknown report, stratum or finding type)")
+    if len({(e["case_id"], e["report_id"]) for e in entries}) != len(entries):
+        raise ValueError("review list: a report is listed twice")
+    return entries
 
 
 def log_review(log_dir: Path, rec: dict) -> Path:

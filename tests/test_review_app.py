@@ -172,3 +172,111 @@ def test_import_rejects_crafted_records():
     for b in bad:
         errs = check_record(b, known, runs)
         assert errs and all(e.isidentifier() for e in errs)       # codes only, never content
+
+
+# ---- fixed review list (partialref.review.sample): synthetic IDs only -------------------------------------
+
+def _synthetic_population():
+    """300 synthetic double-read cases (P/F/S) + single-read and excluded ones; one common and two rare types."""
+    from partialref.extract.score_parser import parser_half
+    rows, inst = [], []
+    for i in range(1, 301):
+        cid = f"{'PPPPFS'[i % 6]}{i:04d}"
+        for j in (1, 2):
+            rid = f"{20 + j}_{i}"
+            rows.append({"case_id": cid, "report_id": rid, "lang": "en"})
+            inst.append({"case_id": cid, "report_id": rid, "finding_type": "ToothAbsence", "slot": "36"})
+            if (i + j) % 9 == 0:
+                inst.append({"case_id": cid, "report_id": rid, "finding_type": "Caries", "slot": "16"})
+            if i % 150 == 0:
+                inst.append({"case_id": cid, "report_id": rid, "finding_type": "MandibularCondyleFinding", "slot": "Left"})
+    rows += [{"case_id": "P9001", "report_id": "21_1", "lang": "en"},                       # single-read
+             {"case_id": "S0015", "report_id": "21_2", "lang": "en"}, {"case_id": "S0015", "report_id": "22_2", "lang": "en"}]
+    return pd.DataFrame(rows), pd.DataFrame(inst), parser_half
+
+
+def test_review_sample_population_and_strata():
+    from partialref.review.sample import TYPES, draw, population
+    reps, inst, parser_half = _synthetic_population()
+    pop = population(reps, "heldout", "PFS", ["S0015"])
+    assert len(pop) and set(pop["case_id"].map(parser_half)) == {"heldout"}
+    assert not {"P9001", "S0015"} & set(pop["case_id"]) and (pop.groupby("case_id").size() == 2).all()
+    assert set(population(reps, "all", "F", [])["centre"]) == {"F"}
+    entries, counts = draw(pop, inst, n_base=40, target=10, seed=1)
+    base = [e for e in entries if e["stratum"] == "base"]
+    extra = [e for e in entries if e["stratum"] == "extra"]
+    keys = [(e["case_id"], e["report_id"]) for e in entries]
+    assert len(base) == 40 and entries[:40] == base and len(set(keys)) == len(keys)       # base first, no repeats
+    assert all(e["judge_types"] is None for e in base) and all(e["judge_types"] for e in extra)
+    by_centre = pd.Series([e["case_id"][0] for e in base]).value_counts().to_dict()
+    assert by_centre == {k: v for k, v in counts["base_by_centre"].items() if v}
+    share = pop["centre"].value_counts(normalize=True)
+    assert all(abs(by_centre.get(c, 0) - 40 * share[c]) < 1 for c in share.index)          # proportional
+    found = {(c, r, t) for c, r, t in inst[["case_id", "report_id", "finding_type"]].itertuples(index=False)}
+    assert all((e["case_id"], e["report_id"], t) in found for e in extra for t in e["judge_types"])
+    c = counts["by_type"]
+    assert c["ToothAbsence"] == {"base_reports_with_type": 40, "extra_reports": 0, "pool_outside_base": len(pop) - 40}
+    n_caries = sum(("Caries" in (e["judge_types"] or [])) for e in extra)
+    assert c["Caries"]["base_reports_with_type"] < 10 and n_caries == c["Caries"]["extra_reports"]
+    assert c["Caries"]["base_reports_with_type"] + n_caries == 10                          # filled up to target
+    rare = c["MandibularCondyleFinding"]                                                   # pool smaller than need
+    assert rare["extra_reports"] == rare["pool_outside_base"] <= 4
+    assert set(c) == set(TYPES)
+    assert draw(pop, inst, 40, 10, 1)[0] == entries and draw(pop, inst, 40, 10, 2)[0] != entries   # seeded
+    assert len(draw(pop, inst, 10 ** 6, 10, 1)[0]) == len(pop)                             # never more than exist
+
+
+def test_review_list_loader_rejects_bad_entries(setup, tmp_path):
+    from partialref.review.data import load_review_list
+    _, _, man = setup
+    reps = load_reports(man, "en")
+    good = [{"case_id": "P001", "report_id": "21_100", "stratum": "base", "judge_types": None},
+            {"case_id": "P001", "report_id": "26_101", "stratum": "extra", "judge_types": ["ToothAbsence"]}]
+    f = tmp_path / "list.json"
+    f.write_text(json.dumps({"meta": {}, "entries": good}))
+    assert load_review_list(f, reps) == good
+    for bad in ([{**good[0], "case_id": "P999"}], [{**good[0], "stratum": "other"}], [{**good[0], "judge_types": ["Caries"]}],
+                [{**good[1], "judge_types": None}], [{**good[1], "judge_types": ["free text"]}], [{**good[1], "judge_types": []}],
+                [{**good[0], "note": "x"}], [good[0], good[0]]):
+        f.write_text(json.dumps({"entries": bad}))
+        with pytest.raises(ValueError):
+            load_review_list(f, reps)
+
+
+def test_list_mode_steps_through_the_list_and_bundle_holds_only_listed_reports(setup, tmp_path, monkeypatch):
+    import tarfile
+
+    from partialref.review.export_bundle import build_bundle
+    _, run, man = setup
+    lst = tmp_path / "review-list.json"
+    lst.write_text(json.dumps({"meta": {"seed": 1}, "entries": [
+        {"case_id": "P001", "report_id": "21_100", "stratum": "base", "judge_types": None},
+        {"case_id": "P001", "report_id": "26_101", "stratum": "extra", "judge_types": ["Caries"]}]}))
+    monkeypatch.setenv("REVIEW_LIST", str(lst))
+    at = AppTest.from_file(APP, default_timeout=30).run()
+    at.text_input[0].input("secret-token").run()
+    assert not at.exception and not any(s.label == "Cases" for s in at.selectbox)           # no free filter
+    shown = " ".join(t.value for t in at.text)
+    assert "SYNTHETIC REPORT P001 21_100 en" in shown and "26_101" not in shown and "F002" not in shown
+    assert sum(s.label.startswith("type ") for s in at.selectbox) == 6                       # missed rows (base)
+    assert any(s.label == "Caries · 36" for s in at.selectbox)
+    next(b for b in at.button if b.label == "Save this report's decisions").click().run()    # logging is on
+    log = tmp_path / "review" / run.name / "review_log.jsonl"
+    assert len(log.read_text().splitlines()) == 1 and any("no verdict" in w.value for w in at.warning)
+    next(b for b in at.button if b.label == "Next ▶").click().run()
+    shown = " ".join(t.value for t in at.text)
+    assert "SYNTHETIC REPORT P001 26_101 en" in shown and "21_100 en" not in shown
+    assert any("Extra report for: Caries" in i.value for i in at.info)
+    assert not any(s.label.startswith("type ") for s in at.selectbox)                        # extra: no missed rows
+    assert not any(s.label.startswith("ToothAbsence") for s in at.selectbox)                 # other types not judged
+    next(b for b in at.button if b.label == "Previous" or b.label == "◀ Previous").click().run()
+    next(b for b in at.button if b.label == "Next report without a saved decision").click().run()
+    assert "SYNTHETIC REPORT P001 26_101 en" in " ".join(t.value for t in at.text)           # first one not saved yet
+
+    tgz = build_bundle(run, man, ["en", "it"], tmp_path / "bundles", review_list=lst)
+    with tarfile.open(tgz) as t:
+        names = t.getnames()
+        info = json.loads(t.extractfile(next(n for n in names if n.endswith("bundle_info.json"))).read())
+    assert tgz.name.endswith("-list.tar.gz") and any(n.endswith("review_list.json") for n in names)
+    assert info["n_reports"] == 4 and info["n_parse_files"] == 2 and info["review_list"] == lst.name
+    assert not any("F002" in n for n in names) and "git_dirty" in info

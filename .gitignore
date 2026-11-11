@@ -18,6 +18,8 @@ configs/paths.yaml
 *_report_text*
 # report files in V2V2R convention ({case}_N.txt) must never be copied in here
 **/reports/*_[0-9].txt
+# unpacked review bundles on a local checkout (contain report text); root folder only, not src/partialref/review
+/review/
 
 # --- secrets ---
 .env

@@ -4,7 +4,10 @@ paths. The bundle stays in results/review/bundles/ (git-ignored, not rsynced), f
 laptop with scp, never via cloud services. Review logs coming back are validated by partialref.review.import_log.
 
     python -m partialref.review.export_bundle --parse-run results/extract/<run> \
-        --manifest results/manifest/<run> [--langs en,it]
+        --manifest results/manifest/<run> [--langs en,it] [--review-list results/review/lists/<list>.json]
+
+With --review-list (partialref.review.sample) the bundle holds ONLY the listed reports and their parse files,
+plus the list itself; the local app then steps through that list.
 """
 
 from __future__ import annotations
@@ -13,7 +16,6 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tarfile
 import tempfile
@@ -23,12 +25,20 @@ from pathlib import Path
 import pandas as pd
 
 from partialref.extract.score_parser import parser_half
+from partialref.provenance import git_state
+from partialref.review.data import load_review_list
 
 
-def build_bundle(parse_run: Path, manifest: Path, langs: list[str], out_dir: Path) -> Path:
+def build_bundle(parse_run: Path, manifest: Path, langs: list[str], out_dir: Path,
+                 review_list: Path | None = None) -> Path:
     reps = pd.read_parquet(manifest / "reports.parquet")
     reps = reps[reps["lang"].isin(langs)].copy()
     name = f"review-bundle-{parse_run.name}"
+    listed = None
+    if review_list is not None:
+        listed = {(e["case_id"], e["report_id"]) for e in load_review_list(review_list, reps)}
+        reps = reps[[k in listed for k in zip(reps["case_id"], reps["report_id"])]].copy()
+        name += "-list"
     with tempfile.TemporaryDirectory() as td:
         root = Path(td) / name
         rows = []
@@ -42,17 +52,17 @@ def build_bundle(parse_run: Path, manifest: Path, langs: list[str], out_dir: Pat
         dst.mkdir(parents=True)
         n_parse = 0
         for f in parse_run.glob("per_report/*.json"):
-            if f.stem.split("__")[-1] in langs:
+            if f.stem.split("__")[-1] in langs and (listed is None or tuple(f.stem.split("__")[:2]) in listed):
                 shutil.copyfile(f, dst / f.name)
                 n_parse += 1
-        try:
-            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
-                                 check=False).stdout.strip()
-        except OSError:
-            sha = None
+        if review_list is not None:
+            shutil.copyfile(review_list, root / "review_list.json")
+        g = git_state()
         info = {"parse_run": parse_run.name, "langs": langs, "n_reports": len(rows), "n_parse_files": n_parse,
                 "n_cases": int(reps["case_id"].nunique()), "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "git": sha, "halves": reps["case_id"].drop_duplicates().map(parser_half).value_counts().to_dict()}
+                "git": (g["git_sha"] or "")[:7] or None, "git_dirty": g["git_dirty"],
+                "review_list": review_list.name if review_list is not None else None,
+                "halves": reps["case_id"].drop_duplicates().map(parser_half).value_counts().to_dict()}
         (root / "bundle_info.json").write_text(json.dumps(info, indent=2))
         (root / "README.txt").write_text(
             "ToothFairy4 report review bundle (contains report text: keep on your own machine only, no cloud sync).\n"
@@ -77,8 +87,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--manifest", required=True, type=Path)
     ap.add_argument("--langs", default="en,it")
     ap.add_argument("--out-dir", default=Path("results/review/bundles"), type=Path)
+    ap.add_argument("--review-list", default=None, type=Path, help="bundle only the reports of this list")
     a = ap.parse_args(argv)
-    tgz = build_bundle(a.parse_run, a.manifest, [x for x in a.langs.split(",") if x], a.out_dir)
+    tgz = build_bundle(a.parse_run, a.manifest, [x for x in a.langs.split(",") if x], a.out_dir, a.review_list)
     print(f"bundle: {tgz} ({tgz.stat().st_size / 1e6:.1f} MB, mode 600)")
     return 0
 

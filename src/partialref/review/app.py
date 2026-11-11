@@ -5,7 +5,12 @@ an SSH tunnel. Report text is shown on screen and never written anywhere. Option
 Blinded: Lumetti's labels and other parses are not shown. Access needs the token from the job's token file.
 
     REVIEW_TOKEN=... REVIEW_PARSE_RUN=results/extract/<run> REVIEW_MANIFEST=results/manifest/<run> \
-        [REVIEW_LANG=en] [REVIEW_LOG_ROOT=results/review] streamlit run src/partialref/review/app.py
+        [REVIEW_LANG=en] [REVIEW_LOG_ROOT=results/review] [REVIEW_LIST=<review list json>] \
+        streamlit run src/partialref/review/app.py
+
+With REVIEW_LIST (partialref.review.sample) the app steps through that fixed list, one report at a time, with
+logging on: "base" reports get a verdict for every finding plus the missed findings; "extra" reports only for
+the finding types they were drawn for.
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ from partialref.review.data import (
     finding_rows,
     load_parse,
     load_reports,
+    load_review_list,
     log_review,
     read_log,
 )
@@ -34,6 +40,7 @@ from partialref.review.data import (
 PERMANENT = [f"{q}{i}" for q in (1, 2, 3, 4) for i in range(1, 9)]
 SLOT_CHOICES = PERMANENT + ["Left", "Right", "QuadrantI", "QuadrantII", "QuadrantIII", "QuadrantIV",
                             "UpperArch", "LowerArch"]
+MISSED_ROWS = 6
 
 
 def args() -> argparse.Namespace:
@@ -44,7 +51,8 @@ def args() -> argparse.Namespace:
             st.error(f"{k} is not set: start the app with jobs/review_app.sbatch.")
             st.stop()
     return argparse.Namespace(parse_run=Path(env["REVIEW_PARSE_RUN"]), manifest=Path(env["REVIEW_MANIFEST"]),
-                              lang=env.get("REVIEW_LANG", "en"), log_root=Path(env.get("REVIEW_LOG_ROOT", "results/review")))
+                              lang=env.get("REVIEW_LANG", "en"), log_root=Path(env.get("REVIEW_LOG_ROOT", "results/review")),
+                              review_list=Path(env["REVIEW_LIST"]) if env.get("REVIEW_LIST") else None)
 
 
 def gate() -> None:
@@ -70,20 +78,28 @@ def main() -> None:
     a = args()
     reports = load_reports(a.manifest, a.lang)
     log_dir = a.log_root / a.parse_run.name
+    entries = load_review_list(a.review_list, reports) if a.review_list else None
 
     with st.sidebar:
         st.markdown(f"**Parse run** `{a.parse_run.name}`  \n**Language** {a.lang}")
-        half = st.selectbox("Cases", ["tune", "heldout", "all"],
-                            help="tune: errors may change the prompt. heldout: only count, never tune on it.")
-        centres = st.multiselect("Centres", ["P", "F", "S", "A"], default=["P", "F", "S"])
-        only_multi = st.checkbox("Only cases with ≥ 2 reports", value=False)
-        seed = st.number_input("Shuffle seed", value=0, step=1)
-        order = case_order(reports, half, centres, int(seed), only_multi)
+        if entries is not None:
+            n_extra = sum(e["stratum"] == "extra" for e in entries)
+            st.markdown(f"**Review list** {len(entries)} reports ({len(entries) - n_extra} base, {n_extra} extra)")
+            order = [e["case_id"] for e in entries]
+            order_key = ("list", str(a.review_list))
+        else:
+            half = st.selectbox("Cases", ["tune", "heldout", "all"],
+                                help="tune: errors may change the prompt. heldout: only count, never tune on it.")
+            centres = st.multiselect("Centres", ["P", "F", "S", "A"], default=["P", "F", "S"])
+            only_multi = st.checkbox("Only cases with ≥ 2 reports", value=False)
+            seed = st.number_input("Shuffle seed", value=0, step=1)
+            order = case_order(reports, half, centres, int(seed), only_multi)
+            order_key = (half, tuple(centres), seed, only_multi)
         if not order:
             st.warning("No cases for this filter.")
             st.stop()
-        if "pos" not in st.session_state or st.session_state.get("order_key") != (half, tuple(centres), seed, only_multi):
-            st.session_state.update(pos=0, order_key=(half, tuple(centres), seed, only_multi))
+        if "pos" not in st.session_state or st.session_state.get("order_key") != order_key:
+            st.session_state.update(pos=0, order_key=order_key)
 
         def go_to() -> None:                       # applied once, when the box changes
             cid = st.session_state.get("jump", "").strip()
@@ -93,22 +109,43 @@ def main() -> None:
 
         st.text_input("Go to case ID (optional)", key="jump", on_change=go_to)
         if st.session_state.get("jump_miss"):
-            st.caption("That case is not in the current filter (half / centres / multi-report).")
+            st.caption("That case is not in the review list." if entries is not None else
+                       "That case is not in the current filter (half / centres / multi-report).")
+        logged = read_log(log_dir)
+        done = set(map(tuple, logged[["case_id", "report_id"]].to_numpy())) if len(logged) else set()
         c1, c2 = st.columns(2)
         if c1.button("◀ Previous", width="stretch"):
             st.session_state["pos"] = max(0, st.session_state["pos"] - 1)
         if c2.button("Next ▶", width="stretch"):
             st.session_state["pos"] = min(len(order) - 1, st.session_state["pos"] + 1)
-        st.caption(f"Case {st.session_state['pos'] + 1} of {len(order)}")
+        if entries is not None and st.button("Next report without a saved decision", width="stretch"):
+            todo = [i for i, e in enumerate(entries) if (e["case_id"], e["report_id"]) not in done]
+            if todo:
+                st.session_state["pos"] = todo[0]
+        st.caption(f"{'Report' if entries is not None else 'Case'} {st.session_state['pos'] + 1} of {len(order)}")
         show_it = st.checkbox("Also show the Italian original", value=False)
-        log_on = st.checkbox("Enable logging", value=False,
+        log_on = st.checkbox("Enable logging", value=entries is not None,
                              help="Off = explore only, nothing is saved. On = a log form appears under each report.")
-        logged = read_log(log_dir)
-        st.caption(f"Logged so far: {logged['report_id'].nunique() if len(logged) else 0} reports")
+        if entries is not None:
+            n_done = sum((e["case_id"], e["report_id"]) in done for e in entries)
+            st.caption(f"Saved so far: {n_done} of {len(entries)} listed reports")
+        else:
+            st.caption(f"Logged so far: {logged['report_id'].nunique() if len(logged) else 0} reports")
 
     case = order[st.session_state["pos"]]
     rep = reports[reports["case_id"] == case]
-    st.markdown(f"## {case}  ·  centre {case[0]}  ·  {len(rep)} report(s)  ·  half: {rep['half'].iloc[0]}")
+    judge_types = None
+    if entries is not None:
+        entry = entries[st.session_state["pos"]]
+        rep = rep[rep["report_id"] == entry["report_id"]]
+        judge_types = entry["judge_types"]
+        saved = "  ·  decision saved" if (case, entry["report_id"]) in done else ""
+        st.markdown(f"## {case}  ·  centre {case[0]}  ·  report {entry['report_id']}  ·  {entry['stratum']}{saved}")
+        if judge_types:
+            st.info("Extra report for: " + ", ".join(judge_types) + ". Judge only the findings of "
+                    "this type; missed findings are not entered for extra reports.")
+    else:
+        st.markdown(f"## {case}  ·  centre {case[0]}  ·  {len(rep)} report(s)  ·  half: {rep['half'].iloc[0]}")
     with st.expander("Finding type definitions and coding rules (the parser's own instructions)"):
         st.text(SYSTEM_PROMPT.split("- Use only these qualifier names")[0])
 
@@ -145,12 +182,18 @@ def main() -> None:
                 if flags:
                     st.caption("Parser notes: " + ", ".join(f"{k}={v}" for k, v in flags.items()))
                 if log_on:
-                    log_form(log_dir, a, case, r.report_id, rep["half"].iloc[0], fr)
+                    log_form(log_dir, a, case, r.report_id, r.half, fr, judge_types, strict=entries is not None)
 
 
-def log_form(log_dir: Path, a: argparse.Namespace, case: str, report_id: str, half: str, fr: pd.DataFrame) -> None:
+def log_form(log_dir: Path, a: argparse.Namespace, case: str, report_id: str, half: str, fr: pd.DataFrame,
+             judge_types: list[str] | None = None, strict: bool = False) -> None:
+    """judge_types: only findings of these types get a verdict box and no missed findings are asked (extra
+    reports of a review list). strict (review list): warn when a finding to judge was left at '—'."""
+    if judge_types:
+        fr = fr[fr["finding_type"].isin(judge_types)]
     with st.form(key=f"log-{case}-{report_id}"):
-        st.markdown("**Log a decision (optional)** — leave a finding at '—' to skip it")
+        st.markdown("**Decision for every finding** — a finding left at '—' counts as not judged" if strict else
+                    "**Log a decision (optional)** — leave a finding at '—' to skip it")
         verdicts = []
         for f in fr.itertuples():
             c1, c2 = st.columns([2, 1])
@@ -159,20 +202,24 @@ def log_form(log_dir: Path, a: argparse.Namespace, case: str, report_id: str, ha
             if v != "—":
                 verdicts.append({"idx": f.idx, "finding_type": f.finding_type, "anchor": f.anchor[:210],
                                  "verdict": v, "correct_slot": None if cs == "—" else cs})
-        st.markdown("Findings the parser missed (up to 3)")
         missed = []
-        for i in range(3):
-            c1, c2 = st.columns([1, 2])
-            t = c1.selectbox(f"type {i + 1}", ["—"] + [x.value for x in FindingType], key=f"mt-{case}-{report_id}-{i}")
-            s = c2.multiselect(f"slots {i + 1}", SLOT_CHOICES, key=f"ms-{case}-{report_id}-{i}")
-            if t != "—":
-                missed.append({"finding_type": t, "slots": s})
+        if not judge_types:
+            st.markdown(f"Findings the parser missed (up to {MISSED_ROWS}; one row per finding type, several slots allowed)")
+            for i in range(MISSED_ROWS):
+                c1, c2 = st.columns([1, 2])
+                t = c1.selectbox(f"type {i + 1}", ["—"] + [x.value for x in FindingType], key=f"mt-{case}-{report_id}-{i}")
+                s = c2.multiselect(f"slots {i + 1}", SLOT_CHOICES, key=f"ms-{case}-{report_id}-{i}")
+                if t != "—":
+                    missed.append({"finding_type": t, "slots": s})
         rflags = st.multiselect("Report flags", REPORT_FLAGS, key=f"rf-{case}-{report_id}")
         if st.form_submit_button("Save this report's decisions"):
             f = log_review(log_dir, {"parse_run": a.parse_run.name, "lang": a.lang, "case_id": case,
                                      "report_id": report_id, "half": half, "verdicts": verdicts,
                                      "missed": missed, "flags": rflags})
             st.success(f"Saved ({len(verdicts)} verdicts, {len(missed)} missed, {len(rflags)} flags) → {f.name}")
+            if strict and len(verdicts) < len(fr):
+                st.warning(f"{len(fr) - len(verdicts)} finding(s) have no verdict yet. Choose one for each and "
+                           "save again; the last saved record of a report is the one that counts.")
 
 
 main()

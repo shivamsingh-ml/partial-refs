@@ -23,6 +23,10 @@ def main(argv: list[str] | None = None) -> int:
     env = {**os.environ, "REVIEW_BUNDLE": str(bundle), "REVIEW_LOCAL": "1",
            "REVIEW_PARSE_RUN": str(bundle / "parse" / info["parse_run"]), "REVIEW_MANIFEST": str(bundle),
            "REVIEW_LOG_ROOT": str(bundle / "logs"), "REVIEW_LANG": "en"}
+    if (bundle / "review_list.json").exists():            # bundle built for a fixed review list
+        env["REVIEW_LIST"] = str(bundle / "review_list.json")
+    else:
+        env.pop("REVIEW_LIST", None)
     app = Path(__file__).with_name("app.py")
     return subprocess.call([sys.executable, "-m", "streamlit", "run", str(app), "--server.address", "127.0.0.1",
                             "--server.port", "8501", "--server.headless", "true",
