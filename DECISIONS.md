@@ -822,3 +822,16 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   explains 0.392 vs 0.409 in the audit). (7) Embargo: participants may publish their results elsewhere only
   6 months after MICCAI 2026 (from about April 2027), except at the ODIN workshop — Shivam to ask the
   organisers whether this paper is covered. (8) Data licence CC BY-NC-SA, research use (see data-use entry).
+- **Per-tooth perception, step 1 (decision D1 of PAPER_PLAN: continue; 2026-11-12).** Intensity features per
+  tooth from the manual masks (tooth + pulp label; crown/root split by surrounding bone; bright material
+  deep in the crown, in the root canal; prosthetic labels; root tip against the tooth's own mid-root bone),
+  development cases only (`results/perception/20261111-2157-1fbda81-tooth-features`, 415 scans, 8,285
+  teeth, 35 % flagged truncated and left out of the classifier). Labels from reports, excluding authors
+  silent on a type (profiles from development cases only, `results/propensity/20261111-2146-73f16cd-readers-dev`).
+  Fold-wise gradient boosting vs a reference of tooth position + centre
+  (`results/perception/20261111-2157-1fbda81-tooth-classifier`, 5,285 teeth, 389 scans), AUC:
+  EndodonticTreatment 0.98 (reference 0.71), ProstheticDevice 0.88 (0.63), ConservativeRestoration 0.87
+  (0.71), PeriapicalLesion 0.83 (0.60; AP 0.12 at prevalence 0.017), Caries 0.73 (0.63). Labels are
+  incomplete, so these are lower bounds. Trials showed enamel saturating at the scan maximum in some
+  scanners (fixed thresholds fail); next: per-scan intensity clustering and histogram features (Shivam's
+  suggestion), then candidate 2/3 (learned image features) for caries and root-tip infection.
