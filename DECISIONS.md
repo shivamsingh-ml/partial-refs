@@ -854,3 +854,13 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   components) is close to but below the hand-made features and adds at most 1–2 AUC points when combined (no
   intervals yet). Next: paired case-bootstrap intervals for the differences; then decide between DINOv3, a
   model trained on our own data, or the segmentation track.
+- **Paired case-bootstrap intervals: frozen DINO adds nothing measurable; histograms help caries (2026-11-12).**
+  Classifier rerun saving out-of-fold predictions `results/perception/20261111-2316-68510f0-tooth-classifier-dinov2-base-preds`
+  (5,285 teeth, 389 cases), `paired_differences.csv` there (1,000 case resamples, same resample for both sets).
+  Δ AUC [95 % interval]: features+DINO vs features: Caries +0.015 [−0.026, 0.052], ConservativeRestoration
+  +0.008 [−0.002, 0.018], EndodonticTreatment +0.001 [−0.001, 0.004], PeriapicalLesion +0.003 [−0.011, 0.018],
+  ProstheticDevice −0.001 [−0.012, 0.009]. DINO alone vs features: ConservativeRestoration −0.058 [−0.085,
+  −0.033], EndodonticTreatment −0.033 [−0.044, −0.023], others include 0. Histogram vs basic: Caries +0.040
+  [0.001, 0.081], PeriapicalLesion +0.032 [−0.003, 0.066], ProstheticDevice +0.014 [−0.006, 0.033] (AP +0.053
+  [0.022, 0.082]), fillings and endo 0. Decision: frozen DINO is not kept in the pipeline; caries and
+  root-tip infection intervals are about ±0.04 wide (124 and 90 positive teeth).
