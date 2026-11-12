@@ -232,20 +232,23 @@ def summarise(df: pd.DataFrame) -> dict:
                 out[cid] = (x - y) * zoom[cid]                                # mm per array axis
         return out, sorted(unchecked)
 
-    def check(a, b, name: str) -> dict:
+    def check(a, b, name: str, ax: int | None = None, dominant: bool = True) -> dict:
+        """ax: use this axis (from another check) instead of the largest median difference. dominant: also flag a
+        case whose largest difference lies on another axis (only for tooth groups; jaws and canals are long
+        front-to-back structures whose centroids also differ front-to-back, 5-scan run 617314)."""
         d, unchecked = diffs(a, b)
         res = {"name": name, "n": len(d), "unchecked": unchecked}
         if not d:
             return res
         D = np.array(list(d.values()))
-        ax = int(np.argmax(np.median(np.abs(D), axis=0)))
+        ax = int(np.argmax(np.median(np.abs(D), axis=0))) if ax is None else ax
         sign = int(np.sign(np.median(D[:, ax])))
         flagged = []
         for cid, v in d.items():
             why = []
             if sign == 0 or np.sign(v[ax]) != sign:
                 why.append("other sign")
-            if int(np.argmax(np.abs(v))) != ax:
+            if dominant and int(np.argmax(np.abs(v))) != ax:
                 why.append(f"dominant axis {int(np.argmax(np.abs(v)))}")
             if abs(v[ax]) < MIN_SEP_MM:
                 why.append(f"only {abs(v[ax]):.1f} mm apart")
@@ -256,8 +259,13 @@ def summarise(df: pd.DataFrame) -> dict:
         return res
 
     lr_up, lr_lo = check(Q[1], Q[2], "upper left/right: Q1 - Q2"), check(Q[4], Q[3], "lower left/right: Q4 - Q3")
-    canal = check([4], [3], "canals: 4 - 3 (4 sits with Q4)")
-    ud, jaw = check(UPPER, LOWER, "up/down: upper - lower teeth"), check([2], [1], "jaws: upper (2) - lower (1)")
+    canal = check([4], [3], "canals: 4 - 3 (4 sits with Q4)", ax=lr_lo.get("axis"), dominant=False)
+    ud = check(UPPER, LOWER, "up/down: upper - lower teeth")
+    jaw = check([2], [1], "jaws: upper (2) - lower (1)", ax=ud.get("axis"), dominant=False)
+    # scans with lower teeth only (e.g. S0015) get an up/down check from the mandibular canals below them
+    canal_ud = check(LOWER, [3, 4], "up/down: lower teeth - mandibular canals 3/4", ax=ud.get("axis"),
+                     dominant=False)
+    no_ud_check = sorted(set(C) - set(ud.get("signs", {})) - set(canal_ud.get("signs", {})))
     lr_cases = set(lr_up.get("signs", {})) | set(lr_lo.get("signs", {}))
     no_lr_check = sorted(set(C) - lr_cases)
     # all left/right checks must use the same axis and sign, and it must be nnU-Net's mirror axis
@@ -297,7 +305,7 @@ def summarise(df: pd.DataFrame) -> dict:
                         if abs(off) > MIDLINE_MM and np.sign(off) != side:
                             tooth_flags.append({"case_id": cid, "tooth": t, "check": "up/down",
                                                 "mm_from_mid_plane": round(float(off), 1)})
-    for x in (lr_up, lr_lo, canal, ud, jaw):
+    for x in (lr_up, lr_lo, canal, ud, jaw, canal_ud):
         x.pop("signs", None)
     pc = ok[ok["pulp_vox"].fillna(0) > 0] if "pulp_vox" in ok else ok.iloc[:0]
     pulp_vox = int(pc["pulp_vox"].sum()) if len(pc) else 0
@@ -330,7 +338,8 @@ def summarise(df: pd.DataFrame) -> dict:
         "left_right_axis_is_nnunet_mirror_axis": lr_up.get("axis") == LR_AXIS_EXPECTED,
         "cases_without_left_right_check": no_lr_check,
         "canal_side_differs_from_teeth": sorted(canal_vs_teeth),
-        "up_down": [ud, jaw], "single_teeth_wrong_side": tooth_flags,
+        "up_down": [ud, canal_ud, jaw], "cases_without_up_down_check": no_ud_check,
+        "single_teeth_wrong_side": tooth_flags,
         "pulp": {"cases": len(pc), "pulp_voxels": pulp_vox,
                  "correct_share_all": float((pc["pulp_correct_share"] * pc["pulp_vox"]).sum() / pulp_vox)
                  if pulp_vox else None,
