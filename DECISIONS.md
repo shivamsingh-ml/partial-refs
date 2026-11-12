@@ -878,3 +878,16 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   for the model (e.g. endo 0.22 vs dentist 0.90): to check. Geometry module (canal, impacted teeth, bone loss)
   judged a digression until the per-tooth chain is shown end to end (Shivam, 2026-11-12); next: top false
   alarms viewed by Shivam, VLM-alone baseline on the same teeth, centre S.
+- **Centre S: root canal fillings missed by the per-tooth model; partly fixed, rest left for later (Shivam, 2026-11-13).**
+  Cause: "bright" features = >= 0.97 x scan maximum; the S scanner does not clip, so one extreme voxel sets the
+  maximum and root canal fillings fall below it (endo-positive teeth, bright_root_pulp median 0 in S vs 0.65 in P;
+  run `results/perception/20261111-2316-68510f0-tooth-classifier-dinov2-base-preds`). Fix 8f55a26: dense shares
+  on the scan's own scale (pulp = 0, dentin = 1; >= 2 / >= 3 or at the ceiling) in deep crown, root and root
+  canal, plus a root-canal histogram. Features `results/perception/20261112-1026-8f55a26-tooth-features-dense`,
+  classifier `results/perception/20261112-1027-8f55a26-tooth-classifier-dense` (basic+histogram): S AUC
+  EndodonticTreatment 0.942 -> 0.950, Caries 0.69 -> 0.75, ProstheticDevice 0.795 -> 0.800; overall unchanged
+  (endo 0.980, fillings 0.85-0.87). Still, endo-positive S teeth get median probability 0.03 (P 1.00): the model,
+  trained mostly on P, keeps using the max-relative features. Human reference on this run (same 267 double-read
+  cases, 0 label mismatches): unchanged conclusions (fillings 0.40 vs dentist 0.76, caries 0.14 vs 0.53, endo 0.76
+  vs 0.90, crowns 0.61 vs 0.63). Decision: no further dataset-specific work now; possible later fix = drop the
+  max-relative "bright_*" features; the paper states the module is weaker on the non-clipping scanner (S).
