@@ -15,6 +15,8 @@
 # written; nnUNet_results/preprocessed point to a scratch folder so the released model folder is untouched.
 # Reports peak GPU memory and seconds per step. A16 speed is NOT the A4000's (A16 is slower); memory is.
 #   sbatch jobs/seg_memory_check.sbatch
+#   or on an A100 with PyTorch limited to 15.5 GiB (an A4000's 16 GB minus driver/display overhead):
+#   MEM_CAP_GIB=15.5 sbatch --qos=a100 --gres=gpu:a100:1 --export=ALL jobs/seg_memory_check.sbatch
 set -euo pipefail
 PROJECT_DIR=/msc/home/ssingh54/partial-refs; cd "$PROJECT_DIR"
 SRC=/msc/home/ssingh54/U-Mamba2/nnunet/nnUNet_results/Dataset703_ToothFairy3SinglePulp/nnUNetTrainer_TF3_Task1_1500ep_accum2__nnUNetResEncUNetLPlans_torchres__3d_fullres_torchres_mambabot2_ps160x288x288_bs1
@@ -23,7 +25,7 @@ RUN=$PROJECT_DIR/results/seg/$(date +%Y%m%d-%H%M)-${SHA}-memcheck-${SLURM_JOB_ID
 mkdir -p "$RUN/nnunet_results" "$RUN/nnunet_preprocessed"
 export nnUNet_results=$RUN/nnunet_results nnUNet_preprocessed=$RUN/nnunet_preprocessed nnUNet_raw=$RUN
 unset nnUNet_compile           # nnU-Net default = torch.compile on, as in the original training logs
-source ~/miniconda3/etc/profile.d/conda.sh; conda activate umamba2
+set +u; source ~/miniconda3/etc/profile.d/conda.sh; conda activate umamba2; set -u   # activate scripts use unset vars (job 617297 failed here)
 echo "node=$(hostname) job=$SLURM_JOB_ID run=$RUN"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
@@ -34,6 +36,12 @@ import nnunetv2.training.nnUNetTrainer.nnUNetTrainer as base
 from nnunetv2.training.nnUNetTrainer.variants.competitions.toothfairy3 import nnUNetTrainer_TF3_Task1_1500ep_accum2 as T
 
 src, run = sys.argv[1], sys.argv[2]
+import os
+cap = float(os.environ.get("MEM_CAP_GIB", "0"))      # on a larger GPU: fail above this, as a 16 GB card would
+if cap:
+    tot0 = torch.cuda.get_device_properties(0).total_memory / 2**30
+    torch.cuda.set_per_process_memory_fraction(cap / tot0, 0)
+    print(f"memory capped at {cap} GiB of {tot0:.1f} GiB")
 base.infer_dataset_class = lambda *_: None          # no preprocessed data needed for a memory check
 plans = json.load(open(f"{src}/plans.json"))
 dsj = json.load(open(f"{src}/dataset.json"))
