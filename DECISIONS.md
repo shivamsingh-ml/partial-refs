@@ -915,3 +915,18 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
     at the VLM's false-positive rate, case bootstrap. VLM "yes" for ProstheticDevice = crown OR post-and-core
     OR fixed-bridge tooth; EndodonticTreatment = with_endo OR post-and-core; PeriapicalLesion also split by our
     root-filling label (the question is meant for root-filled teeth only).
+  - *Result, job 616973 (2026-11-12, `results/baseline/20261112-1423-e51d792-v2v2r-vlm-run-616973`,
+    `vs_module-basic+histogram-manual/`)*: 83/83 cases VLM_OK, 0 skipped; 79 with module rows (P136, P145,
+    P388, P420 have none), 1,112 teeth; 1 tooth unanswered, 0 malformed. d_sens = module − VLM at the VLM's
+    FPR (95 % case bootstrap): EndodonticTreatment +0.05 (−0.05, +0.12; VLM 0.86 at 1.6 %);
+    ProstheticDevice +0.13 (−0.02, +0.30; VLM 0.33 at 1.7 %); ConservativeRestoration +0.10 (−0.07, +0.30;
+    VLM 0.42 at 4.0 %); Caries +0.25 (0, +0.60; 8 positives, VLM 0/8); PeriapicalLesion +0.15 (−0.14, +0.50;
+    13 positives, VLM 1/13). Reading: the module is nowhere behind the released VLM, though the VLM was trained
+    on these scans; ahead on crowns and fillings but not certain on one fold; root canal fillings about equal;
+    caries and periapical lesions too few on fold 0 to compare. The VLM says yes rarely (FPR ≤ 4 %). Plan
+    unchanged: step 2 (hard findings) next.
+- **No comparison with other released CBCT report models (Shivam, 2026-11-12).** Other challenge entries
+  (e.g. EviDent-CBCT, arXiv 2610.02375) and CBCTRepD (arXiv 2603.10933) are not run: released challenge models
+  were most likely trained on all public ToothFairy4 scans, which include our locked test set and centre A, so
+  their scores on our data would be inflated. They go into related work only. The one baseline is V2V2R
+  retrained on our development split.
