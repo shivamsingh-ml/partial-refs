@@ -891,3 +891,14 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   cases, 0 label mismatches): unchanged conclusions (fillings 0.40 vs dentist 0.76, caries 0.14 vs 0.53, endo 0.76
   vs 0.90, crowns 0.61 vs 0.63). Decision: no further dataset-specific work now; possible later fix = drop the
   max-relative "bright_*" features; the paper states the module is weaker on the non-clipping scanner (S).
+- **Screening check: what V2V2R's released VLM sees per tooth (Shivam, 2026-11-13).** Exception to "released
+  weights only for smoke tests" (2026-11-07): one screening run, not a paper result. Before weeks of retraining,
+  check whether the VLM already detects the per-tooth findings as well as our module. Submitted pipeline
+  unchanged except three off-by-default switches (commit message lists them): a given mask instead of the
+  segmentation (`PRECOMPUTED_MASK`), keeping the per-question answers (`KEEP_VQA_DIR`; read BEFORE the source
+  rules and the report writer's silence rules), one vLLM server for all cases (`--serve-only` /
+  `--external-server`, same server settings). Masks: TF3 manual masks converted to V2V2R's grid and labels
+  (`partialref.baseline.v2v2r_masks`; grid checked voxel by voxel per case; left/right variant chosen by Dice
+  against V2V2R's own masks on the test cases, minimum 0.80). Cases: development fold 0 (83 after S0015).
+  Decoding as submitted (sampled, temperature 1.0). Biases: the released VLM was trained on these scans
+  (favours V2V2R); final comparison later with retrained segmentation and VLM on the locked test set.

@@ -34,6 +34,19 @@ from report_side import generate_report
 # partial-refs: env-overridable so the pipeline can run outside the container (defaults unchanged).
 INPUT_PATH = Path(os.getenv("INPUT_DIR", "/input"))
 OUTPUT_PATH = Path(os.getenv("OUTPUT_DIR", "/output"))
+# partial-refs: optional precomputed mask (same voxel grid as the input CBCT, challenge label scheme) used
+# INSTEAD of run_segmentation, to run the rest of the pipeline on given masks. Unset = unchanged behaviour.
+PRECOMPUTED_MASK = os.getenv("PRECOMPUTED_MASK", "").strip()
+
+
+def _load_precomputed_mask(cbct: sitk.Image) -> sitk.Image:
+    mask = sitk.ReadImage(PRECOMPUTED_MASK)
+    if mask.GetSize() != cbct.GetSize():
+        raise RuntimeError(f"precomputed mask size {mask.GetSize()} != CBCT size {cbct.GetSize()}")
+    mask = sitk.Cast(mask, sitk.sitkUInt8)
+    mask.CopyInformation(cbct)                     # same grid by construction; take the CBCT's geometry
+    print(f"=+= segmentation: PRECOMPUTED mask {PRECOMPUTED_MASK}")
+    return mask
 
 
 def run() -> int:
@@ -44,7 +57,7 @@ def run() -> int:
 
     # 1) segment the RAW volume; mask comes back in input space
     _t = time.time()
-    mask = run_segmentation(cbct)
+    mask = _load_precomputed_mask(cbct) if PRECOMPUTED_MASK else run_segmentation(cbct)
     _t_seg = time.time() - _t
     print(f"=+= TIMING segmentation      {_t_seg:8.1f}s", flush=True)
 

@@ -236,6 +236,30 @@ class VLLMServer:
                 self.proc.kill()
 
 
+class ExternalServer:
+    """partial-refs: a vLLM server already running on `port` (see --serve-only). Same interface as
+    VLLMServer for what main() uses; it is neither started nor stopped here."""
+
+    def __init__(self, port: int):
+        self.port, self.proc, self.kv_tokens, self.weights_gib, self.milestones = port, None, None, None, []
+
+    def wait_ready(self, timeout_s: float, poll_s: float = 0.5) -> float:
+        url, t0 = f"http://127.0.0.1:{self.port}/health", time.time()
+        while time.time() - t0 < timeout_s:
+            try:
+                with urllib.request.urlopen(url, timeout=2):
+                    return time.time() - t0
+            except Exception:
+                time.sleep(poll_s)
+        raise TimeoutError(f"external vLLM on port {self.port} not ready after {timeout_s:.0f}s")
+
+    def concurrency(self, n_calls: int) -> tuple:
+        return FALLBACK_CONCURRENCY, "external server: KV size unknown; fallback (set --max-concurrency)"
+
+    def stop(self) -> None:
+        pass
+
+
 def run_generator(script: str, args: List[str], phases: Phases,
                   label: str) -> None:
     phases.start(label)
@@ -448,7 +472,26 @@ def main() -> None:
                     help="0 = auto from the server's reported KV cache")
     ap.add_argument("--no-server", action="store_true",
                     help="images and timing only; skip vLLM entirely")
+    # partial-refs: start the server once per job and reuse it for many cases. --serve-only starts it with
+    # the same command and settings as a normal run and blocks until killed; --external-server uses a server
+    # already running on --port (no start/stop; concurrency from --max-concurrency, else the fallback).
+    ap.add_argument("--serve-only", action="store_true")
+    ap.add_argument("--external-server", action="store_true")
     args = ap.parse_args()
+
+    if args.serve_only:
+        srv = VLLMServer(args.model, args.port, args.max_model_len, args.gpu_memory_utilization,
+                         args.max_images_per_prompt, args.out_dir / "vllm_startup.log")
+        srv.start()
+        try:
+            waited = srv.wait_ready(args.startup_timeout)
+            print(f"[serve-only] ready after {waited:.1f}s; KV {srv.kv_tokens} tokens; "
+                  f"concurrency for a full case: {srv.concurrency(10**6)}", flush=True)
+            while srv.proc and srv.proc.poll() is None:
+                time.sleep(5)
+        finally:
+            srv.stop()
+        sys.exit(1 if srv.proc and srv.proc.returncode not in (0, None, -15) else 0)
 
     phases = Phases()
     out_dir = args.out_dir
@@ -460,7 +503,12 @@ def main() -> None:
     ready_s = 0.0
 
     # ── vLLM first, in the background: it is the long pole and needs no CPU ──
-    if not args.no_server:
+    if args.external_server and not args.no_server:
+        server = ExternalServer(args.port)
+        phases.start("vllm:startup")
+        ready_s = server.wait_ready(args.startup_timeout)
+        phases.end("vllm:startup")
+    elif not args.no_server:
         server = VLLMServer(
             args.model, args.port, args.max_model_len,
             args.gpu_memory_utilization, args.max_images_per_prompt,
@@ -494,7 +542,7 @@ def main() -> None:
                     images_dir, phases)
     phases.end("images:total")
 
-    if server:
+    if server and not args.external_server:
         waiter.join()
         if server_err:
             print(f"[FAIL] {server_err[0]}", file=sys.stderr)

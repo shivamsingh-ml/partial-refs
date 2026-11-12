@@ -90,6 +90,10 @@ def generate_report(cbct_image: sitk.Image, mask_image: sitk.Image, facts) -> st
             "--startup-timeout", str(float(VLM_STARTUP_TIMEOUT_S)),
             "--max-concurrency", str(VLM_MAX_CONCURRENCY),
         ]
+        # partial-refs: reuse a vLLM server that is already running on VLM_PORT (started once per job with
+        # competition_runner.py --serve-only). Unset = unchanged behaviour (one server per case).
+        if os.getenv("VLM_EXTERNAL_SERVER", "") == "1":
+            cmd.append("--external-server")
         # State of the compile cache, logged explicitly: a miss is silent
         # otherwise, and the difference is ~200s of startup.
         _cr = os.getenv("VLLM_CACHE_ROOT", "")
@@ -127,6 +131,11 @@ def generate_report(cbct_image: sitk.Image, mask_image: sitk.Image, facts) -> st
             return _template_fallback(facts)
         raise
     finally:
+        # partial-refs: optionally keep the runner's output (per-question answers, summaries, report, facts;
+        # not the images) before the temp dir is deleted. Unset = unchanged behaviour.
+        keep = os.getenv("KEEP_VQA_DIR", "").strip()
+        if keep and (work / "out").exists():
+            shutil.copytree(work / "out", Path(keep), ignore=shutil.ignore_patterns("images"), dirs_exist_ok=True)
         shutil.rmtree(work, ignore_errors=True)
 
 
