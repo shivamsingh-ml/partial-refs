@@ -10,7 +10,11 @@ separately). The tooth is split into a crown part and a root part along its main
 - the bone around the root tip (1-3 mm from the tooth, within 4 mm of the apex point), relative to the
   jaw-bone median, as a low percentile and a dark share.
 Bright = >= 0.97 x the scan maximum (metal saturates at the maximum); the number of saturated voxels in the
-scan and the tooth intensity are recorded so a scan without metal can be recognised.
+scan and the tooth intensity are recorded so a scan without metal can be recognised. In scanners that do not
+clip, one very bright voxel sets the maximum and root canal fillings stay below 0.97 x max (centre S, root canal
+filled teeth: bright_root_pulp median 0 vs 0.65 in P; 2026-11-13). Therefore also "dense" shares on the scan's
+own scale: share of voxels with (value - pulp level) / (dentin - pulp level) >= 2 or >= 3, or at the ceiling
+(>= 0.99 x max, for scanners that clip), in the deep crown, the root and the root canal (pulp label in the root).
 
 Crown end vs root end: the end whose 2 mm surroundings contain more jaw bone (labels 1, 2) is the root
 end; end_bone_contrast near 0 means the orientation is uncertain (e.g. impacted teeth fully in bone).
@@ -64,7 +68,8 @@ MIDROOT_AT = 0.35             # reference bone: around the point 35 % of the way
 
 LEVEL_SAMPLE = 200_000
 CLIP_SHARE_MAX = 0.01        # above this share of tooth voxels at the ceiling, the scanner clips enamel
-REGIONS = ("crown_deep", "crown_surface", "root", "apex", "midroot")
+REGIONS = ("crown_deep", "crown_surface", "root", "root_pulp", "apex", "midroot")
+DENSE_Z = (2.0, 3.0)         # dense = this many dentin-pulp steps above the pulp level, or at the ceiling
 
 
 def scan_levels(tooth_vals: np.ndarray, scan_max: float, seed: int = 0) -> dict[str, float]:
@@ -178,8 +183,13 @@ def tooth_row(I: np.ndarray, L: np.ndarray, fdi: int, spacing: np.ndarray, scan_
     low, dentin = lv.get("lvl_low", np.nan), lv.get("lvl_dentin", np.nan)
     hist = {}
     for name, x in (("crown_deep", vals[crown & deep]), ("crown_surface", vals[crown & surf]), ("root", vals[root]),
-                    ("apex", apex_vals), ("midroot", mid_vals)):
+                    ("root_pulp", vals[root & pulp]), ("apex", apex_vals), ("midroot", mid_vals)):
         hist |= hist_feats(name, x, low, dentin)
+    scale_ok = np.isfinite(low) and np.isfinite(dentin) and dentin > low
+    for name, x in (("crown_deep", vals[crown & deep]), ("root", vals[root]), ("root_pulp", vals[root & pulp])):
+        for k in DENSE_Z:
+            dense = (((x - low) / (dentin - low)) >= k) | (x >= 0.99 * scan_max) if scale_ok else None
+            hist[f"{name}_dense{int(k)}"] = float(dense.mean()) if scale_ok and len(x) else np.nan
     cd = vals[crown & deep]
     ok = cd.size and np.isfinite(low) and np.isfinite(dentin) and dentin > low
     deep_dense = float(((cd - low) / (dentin - low) > 1.5).mean()) if ok else np.nan

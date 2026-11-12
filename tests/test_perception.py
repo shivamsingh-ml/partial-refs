@@ -277,3 +277,17 @@ def test_human_reference_weights_three_reports_and_interpolates():
                       "p": np.tile([0.9, 0.1], 20), "w": 1.0})
     bs = bootstrap(m, n_boot=50, seed=0)
     assert bs["n_boot_used"] == 50 and bs["d_sens"] == 0 and bs["d_sens_lo"] == bs["d_sens_hi"] == 0
+
+
+def test_root_canal_filling_is_found_when_one_metal_voxel_sets_the_scan_maximum():
+    I, L = _volume(canal_fill=True)                                          # filling 3000, dentin 2000, pulp 1000
+    I[0, 0, 0] = 30000.0                                                     # one extreme voxel elsewhere (no clipping)
+    lv = {"lvl_low": 1000.0, "lvl_dentin": 2000.0}
+    r = tooth_row(I, L, 36, SP, float(I.max()), float(np.median(I[L == 1])), levels=lv)
+    assert r["bright_root_pulp"] == 0                                        # the old max-relative rule misses it
+    assert r["root_pulp_dense2"] > 0.5 and r["root_pulp_p50"] > 1.9 and r["root_dense2"] > 0
+    plain = tooth_row(*_volume(), 36, SP, 30000.0, 900.0, levels=lv)
+    assert plain["root_pulp_dense2"] == 0 and plain["crown_deep_dense2"] == 0 and plain["root_dense3"] == 0
+    clipped, Lc = _volume(canal_fill=True)                                   # clipping scanner: filling at the ceiling
+    rc = tooth_row(clipped, Lc, 36, SP, 3000.0, 900.0, levels={"lvl_low": 1000.0, "lvl_dentin": 2400.0})
+    assert rc["root_pulp_dense3"] > 0.5                                      # z < 3 but at the ceiling

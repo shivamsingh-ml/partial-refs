@@ -61,7 +61,7 @@ def _author(x) -> str:
 def feature_columns(df: pd.DataFrame) -> list[str]:
     """FEATURES plus the histogram and level features present in the table."""
     extra = [c for c in df.columns if any(c.startswith(f"{r}_") for r in ("crown_deep", "crown_surface", "root", "apex", "midroot"))
-             and c.split("_")[-1] in ("p5", "p25", "p50", "p75", "p95", "iqr", "skew")]
+             and c.split("_")[-1] in ("p5", "p25", "p50", "p75", "p95", "iqr", "skew", "dense2", "dense3")]
     extra += [c for c in ("crown_deep_dense_share", "crown_deep_at_ceiling") if c in df.columns]
     # scan-level constants (levels, clip share) are NOT features: they identify the scanner (and so readers)
     return [c for c in FEATURES if c in df.columns] + [c for c in extra if c not in FEATURES]
