@@ -77,7 +77,8 @@ wait_server() {
 # masks (CPU)
 VARIANTS=both; [ "$MODE" = run ] && VARIANTS=${MIRROR:?MIRROR=yes|no for MODE=run}
 OMP_NUM_THREADS=2 "$PR_PY" -m partialref.baseline.v2v2r_masks --cases "$CASE_IDS" --tf3-dir "$TF3_DIR" \
-  --tf4-dir "$DATA_DIR" --out-dir "$RUN/masks" --mirror "$VARIANTS" --workers 4
+  --tf4-dir "$DATA_DIR" --out-dir "$RUN/masks" --mirror "$VARIANTS" --workers 4 \
+  || echo "MASK_ERRORS: cases listed above are skipped (job 616840 stopped here on one case)"
 
 set +u; source "$HOME/miniconda3/etc/profile.d/conda.sh"; conda activate umamba2; set -u
 
@@ -129,7 +130,8 @@ else
   wait_server
 fi
 for CID in ${CASE_IDS//,/ }; do
-  run_case "$CID" manual "$RUN/masks/$CHOSEN/$CID.nii.gz"
+  if [ -f "$RUN/masks/$CHOSEN/$CID.nii.gz" ]; then run_case "$CID" manual "$RUN/masks/$CHOSEN/$CID.nii.gz"
+  else echo "RESULT $CID manual SKIPPED no converted mask"; fi
 done 2>&1 | tee -a "$RUN/results.txt"
 grep -c "VLM_OK" "$RUN/results.txt" || status=1
 grep -q "VLM_FAILED" "$RUN/results.txt" && status=1

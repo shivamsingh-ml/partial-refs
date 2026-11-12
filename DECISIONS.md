@@ -902,3 +902,16 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   against V2V2R's own masks on the test cases, minimum 0.80). Cases: development fold 0 (83 after S0015).
   Decoding as submitted (sampled, temperature 1.0). Biases: the released VLM was trained on these scans
   (favours V2V2R); final comparison later with retrained segmentation and VLM on the locked test set.
+  - *Test job 616828 (2026-11-12, `results/baseline/20261112-1233-503c53b-v2v2r-vlm-test-616828`)*: 3 cases ran
+    as submitted and with manual masks, all VLM_OK; mean tooth Dice vs V2V2R's own masks mirrored 0.98 / 0.98
+    / 0.95, not mirrored ~0 -> `MIRROR=yes`. Per-tooth answers are kept and readable.
+  - *Job 616840 stopped in mask conversion* (no VLM run): TF3 mask of S0021 has label 100, which is not in
+    TF3's label list: 13 pieces, 169 mm³, touching only the pharynx (7) and background, no tooth. V2V2R's
+    segmentation training data set every unlisted label to background (U-Mamba2
+    `scripts/convert_tf3_singlepulp.py`), our tooth features ignore it; so 100 -> 0 in the converter
+    (`TO_BACKGROUND`), other unknown labels still raise. The job script now skips a case whose mask fails
+    instead of stopping. S0021 also has no pulp outline for 11, 12, 21-27 (not related to label 100).
+  - *Scoring* `partialref.baseline.v2v2r_vs_module` (reviewed): VLM yes/no per tooth vs our out-of-fold module
+    at the VLM's false-positive rate, case bootstrap. VLM "yes" for ProstheticDevice = crown OR post-and-core
+    OR fixed-bridge tooth; EndodonticTreatment = with_endo OR post-and-core; PeriapicalLesion also split by our
+    root-filling label (the question is meant for root-filled teeth only).

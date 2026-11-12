@@ -42,11 +42,15 @@ KEEP = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 CANALS = {103: 51, 104: 52, 105: 53}
 PULP = 50
 LR_SWAP = {3: 4, 4: 3, 5: 6, 6: 5, 51: 52, 52: 51}
+# Labels outside TF3's label list that are set to background, as V2V2R's segmentation training data did
+# (U-Mamba2/scripts/convert_tf3_singlepulp.py: anything not in the mapping -> 0). 100: S0021, 13 pieces
+# (169 mm^3) touching only the pharynx and background, no tooth (2026-11-12). Any other unknown label raises.
+TO_BACKGROUND = (100,)
 
 
 def convert_labels(L: np.ndarray, mirror: bool) -> np.ndarray:
     """TF3 label array -> V2V2R label scheme (same array layout). Raises on labels it does not know."""
-    known = set(KEEP) | set(TEETH) | set(CANALS) | {100 + t for t in TEETH} | {0}
+    known = set(KEEP) | set(TEETH) | set(CANALS) | {100 + t for t in TEETH} | set(TO_BACKGROUND) | {0}
     unknown = sorted(set(np.unique(L).tolist()) - known)
     if unknown:
         raise ValueError(f"unexpected labels {unknown}")
