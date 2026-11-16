@@ -959,6 +959,11 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
     upper jaw (front-view overlay); the scan itself is not upside down. Training list: 424 scans.
   - Not fixed, logged: unlabelled upper molar in P368 and unlabelled bridge in P248, S0038 tooth 41
     under-segmented, specks of 1-19 voxels in several scans.
+  - *Check on the fixed labels* (job 619677, `results/seg/20261116-1609-ddf5813-seg-train-check-fixed-619677`):
+    424/424 scans, no errors; every flag the fixes targeted is gone (P192 sides and canals, all jaw-label
+    flags, all clearly misplaced teeth). Left: 4 teeth ~3 mm past the margin with the right neighbours (three
+    wisdom teeth, one incisor at the midline), P240 (too few lower teeth to tell sides), the uninformative
+    canal-height check; pulp back to its own tooth 99.993 % (worst scan 98.5 %, no tooth below 90 %).
   - *Pretrained weights not used as released*: U-Mamba2's DAE weights were pretrained on all 532 TF3 scans
     (`U-Mamba2/documentation/competitions/Pretrain_DAE/dataset_tf3.json`: 478 + 54), i.e. on our test scans.
     Pretraining is repeated with their code on our training scans only (SD-Tooth not available to us).
