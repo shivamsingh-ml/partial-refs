@@ -53,6 +53,7 @@ import pandas as pd
 from scipy import ndimage
 
 from partialref.audit.tf3_link import tf3_paths
+from partialref.baseline.label_fixes import apply_fixes, load_fixes
 from partialref.provenance import make_run_id, write_provenance
 
 Q = {1: list(range(11, 19)), 2: list(range(21, 29)), 3: list(range(31, 39)), 4: list(range(41, 49))}
@@ -144,7 +145,9 @@ def _qs(img: nib.Nifti1Image) -> dict:
             "q_eq_s": bool(q is not None and s is not None and np.allclose(q, s, atol=1e-4)) if qc and sc else None}
 
 
-def check_case(case_id: str, tf3_dir: str, mapping: dict[int, int]) -> dict:
+def check_case(case_id: str, tf3_dir: str, mapping: dict[int, int], fixes: dict | None = None) -> dict:
+    """fixes: table of `partialref.baseline.label_fixes`; scope "train" for every check, scope "module" for the
+    pulp test (training merges pulps, the module reads each tooth's own pulp)."""
     row: dict = {"case_id": case_id, "image_present": False, "label_present": False}
     try:
         img_p, lab_p = tf3_paths(case_id, Path(tf3_dir))
@@ -177,6 +180,11 @@ def check_case(case_id: str, tf3_dir: str, mapping: dict[int, int]) -> dict:
         if "ToothFairy3S_0048" in img_p.name:                                # V2V2R's known quirk
             for a, b in S0048_QUIRK.items():
                 L[L == a] = b
+        L_module = L
+        if fixes is not None:
+            L_module, _ = apply_fixes(L, case_id, fixes, "module")
+            L, log = apply_fixes(L, case_id, fixes, "train")
+            row["fixes_applied_train"] = len(log)
         vals, cnt = np.unique(L, return_counts=True)
         counts = {int(v): int(c) for v, c in zip(vals, cnt)}
         row["label_counts"] = json.dumps(counts)
@@ -200,7 +208,7 @@ def check_case(case_id: str, tf3_dir: str, mapping: dict[int, int]) -> dict:
             row["label_fits_image"] = bool(asis > max(flips.values()))
         del I, tooth
         row["centroids"] = json.dumps(centroids(L, TEETH + [1, 2, 3, 4]))
-        row.update(pulp_reassign(L))
+        row.update(pulp_reassign(L_module))
         row["error"] = None
     except Exception as e:                                                   # noqa: BLE001
         row["error"] = f"{type(e).__name__}: {e}"[:300]
@@ -359,9 +367,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path)
     ap.add_argument("--cases", help="comma-separated subset (diagnostic run)")
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--fixes", type=Path, help="label fix table (configs/seg/label_fixes_v*.json): applied before "
+                    "the checks; its excluded scans are left out")
     a = ap.parse_args(argv)
     mapping = load_mapping(a.umamba2_dir)
+    fixes = load_fixes(a.fixes) if a.fixes else None
     cases = candidates(a.splits)
+    if fixes is not None:
+        cases = [c for c in cases if c not in fixes.get("exclude", {})]
+        unknown = set(fixes["fixes"]) - set(cases)
+        if unknown:
+            raise SystemExit(f"fixes for scans that are not training candidates: {sorted(unknown)}")
     if a.cases:
         sub = [c.strip() for c in a.cases.split(",") if c.strip()]
         if set(sub) - set(cases):
@@ -371,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     rows = []
     with ProcessPoolExecutor(a.workers) as ex:
-        futs = {c: ex.submit(check_case, c, str(a.tf3_dir), mapping) for c in cases}
+        futs = {c: ex.submit(check_case, c, str(a.tf3_dir), mapping, fixes) for c in cases}
         for c, f in futs.items():
             try:
                 rows.append(f.result())
@@ -384,8 +400,19 @@ def main(argv: list[str] | None = None) -> int:
     (out / "summary.json").write_text(json.dumps(s, indent=2, default=str))
     (out / "candidates.txt").write_text("\n".join(cases) + "\n")
     write_provenance(out, {"tf3_dir": str(a.tf3_dir), "splits": str(a.splits), "umamba2_dir": str(a.umamba2_dir),
-                           "n_cases": len(cases)}, packages=["numpy", "scipy", "pandas", "pyarrow", "nibabel",
-                                                             "SimpleITK"])
+                           "n_cases": len(cases), "fixes": str(a.fixes) if a.fixes else None,
+                           "excluded": sorted(fixes.get("exclude", {})) if fixes else []},
+                     packages=["numpy", "scipy", "pandas", "pyarrow", "nibabel", "SimpleITK"])
+    if fixes is not None:                     # a fix that did not apply must stop the run, not hide in "errors"
+        idx = df.set_index("case_id")
+        bad = []
+        for cid, ops in fixes["fixes"].items():
+            n_train = sum("train" in op["scope"] for op in ops)
+            if cid in set(cases) and (cid not in idx.index or pd.notna(idx.at[cid, "error"])
+                                      or idx.at[cid, "fixes_applied_train"] != n_train):
+                bad.append(cid)
+        if bad:
+            raise SystemExit(f"label fixes did not apply cleanly for {bad}; see per_case.parquet errors")
     brief = {k: v for k, v in s.items() if k not in ("left_right", "up_down", "single_teeth_wrong_side", "pulp")}
     brief["left_right_flagged"] = {x["name"]: x.get("flagged") for x in s["left_right"]}
     brief["up_down_flagged"] = {x["name"]: x.get("flagged") for x in s["up_down"]}

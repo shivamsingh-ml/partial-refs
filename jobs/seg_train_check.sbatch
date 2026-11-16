@@ -10,13 +10,14 @@
 # test-set leakage, headers (nibabel + SimpleITK), label vs image fit, left/right and up/down consistency,
 # labels, V2V2R's conversion, per-tooth pulp recovery. Numbers only. See partialref.baseline.seg_train_check.
 #   sbatch jobs/seg_train_check.sbatch [CASE_IDS]      (no CASE_IDS = all candidates)
+#   FIXES=configs/seg/label_fixes_v1.json sbatch --export=ALL jobs/seg_train_check.sbatch   (fixed labels, exclusions out)
 set -euo pipefail
 cd /msc/home/ssingh54/partial-refs
 CASES=${1:-}
-TAG=seg-train-check$([ -n "$CASES" ] && echo "-diag" || true)
+TAG=seg-train-check$([ -n "$CASES" ] && echo "-diag" || true)$([ -n "${FIXES:-}" ] && echo "-fixed" || true)
 RUN=results/seg/$(date +%Y%m%d-%H%M)-$(git rev-parse --short HEAD)$([ -n "$(git status --porcelain -- src jobs)" ] && echo "-dirty" || true)-${TAG}-${SLURM_JOB_ID}
 echo "node=$(hostname) job=$SLURM_JOB_ID run=$RUN start=$(date -Is)"
 OMP_NUM_THREADS=1 PYTHONHASHSEED=0 ~/miniconda3/envs/cbct_partialref/bin/python -m partialref.baseline.seg_train_check \
   --tf3-dir /msc/home/ssingh54/sae_tooth/data/raw/toothfairy3 --splits configs/splits/v1 \
-  --umamba2-dir /msc/home/ssingh54/U-Mamba2 --out "$RUN" --workers 4 ${CASES:+--cases "$CASES"}
+  --umamba2-dir /msc/home/ssingh54/U-Mamba2 --out "$RUN" --workers 4 ${CASES:+--cases "$CASES"} ${FIXES:+--fixes "$FIXES"}
 echo "done=$(date -Is)"

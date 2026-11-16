@@ -930,3 +930,41 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   were most likely trained on all public ToothFairy4 scans, which include our locked test set and centre A, so
   their scores on our data would be inflated. They go into related work only. The one baseline is V2V2R
   retrained on our development split.
+- **Segmentation retraining: training data checked and corrected (Shivam, 2026-11-12/16).** Retrain V2V2R's
+  U-Mamba2 once (no per-fold segmentation) on development scans + 5 TF3-only scans, with V2V2R's recipe and
+  conversion script unchanged.
+  - *Check* `partialref.baseline.seg_train_check` (reviewed), job 617320,
+    `results/seg/20261112-2202-c9ad590-seg-train-check-617320`: 425/425 scans read; all LPS, 0.3 mm, one direction
+    matrix, label on the image grid in nibabel and SimpleITK, qform = sform; in every scan with teeth the label
+    fits its image far better as stored than flipped (smallest margin 219); left/right lies on nibabel axis 0 =
+    nnU-Net axis 2, the only axis on which U-Mamba2's LRMirrorTransform swaps side labels; label 100 only in
+    S0021 (6,266 vox) and S0047 (2 vox), set to background as V2V2R did. Merged pulp given back to the nearest
+    tooth: 99.99 % of 5.8 M pulp voxels to their own tooth (worst scan 97.5 %) -> one merged pulp class costs the
+    per-tooth module nothing.
+  - *16 scans without tooth labels* (P034, P077, P080, P113, P136, P145, P331, P356, P388, P436, P442, P487,
+    P499, P547, S0009, S0042): viewed, all toothless lower jaws -> kept. 9 of them contain unlabelled metal
+    (implant-like posts or bars: P034, P077, P136, P356, P436, P442, P487, P499, P547) while 53/425 scans use the
+    implant label; not fixable without new annotation -> kept as is (V2V2R trained on them too), logged.
+  - *Label errors fixed* in `configs/seg/label_fixes_v1.json` (applied to a copy; raw files untouched;
+    `partialref.baseline.label_fixes`, each op must change an exact voxel count): P061 (crown of lower 37
+    labelled 27 -> 37; 26<->36), P192 (31<->41, 32<->42), S0038 (22->32), P041 (28->18), P105 (46->16, 47->17,
+    fragments of the upper molars), P450 (48->33, crown tip of 33), S0002/S0004/S0034 (label 2 on hyoid / a
+    styloid-like rod / soft tissue -> 0), P248 (27->17) and P368 (35->25). Found from rendered views and
+    neighbouring labels, then checked by three independent reviewer agents (thin slices in three planes, pulp
+    containment, components, duplicates): all agreed on every fix; two of them found the P061 37 crown, which
+    the first proposal missed. P248 and P368: quadrant certain, position digit (16/17, 24/25) needs a dentist;
+    best estimate used. Pulp-only fixes (P061 126<->136 and a 127 piece; P192 pulps; S0038 122->132 and a 142
+    piece inside 12 -> 112) have scope "module" only: training merges all pulps, our per-tooth module does not.
+  - *S0015 excluded* (decided earlier, re-confirmed by Shivam 2026-11-16): much of the lower jaw is labelled
+    upper jaw (front-view overlay); the scan itself is not upside down. Training list: 424 scans.
+  - Not fixed, logged: unlabelled upper molar in P368 and unlabelled bridge in P248, S0038 tooth 41
+    under-segmented, specks of 1-19 voxels in several scans.
+  - *Pretrained weights not used as released*: U-Mamba2's DAE weights were pretrained on all 532 TF3 scans
+    (`U-Mamba2/documentation/competitions/Pretrain_DAE/dataset_tf3.json`: 478 + 54), i.e. on our test scans.
+    Pretraining is repeated with their code on our training scans only (SD-Tooth not available to us).
+  - *Compute*: V2V2R's training took 247 h (10.3 days) on one A100 40 GB (four 3-day jobs, 1,500 rounds x
+    ~580 s; `U-Mamba2/nnunet/nnUNet_results/Dataset703.../fold_all/training_log_*`); fewer scans do not shorten
+    it (fixed steps per round). Pretraining estimated ~1 day (not measured). Does not fit in 16 GB: job 617335
+    (A16, 14.6 GiB) ran out of memory in the first forward pass at 13.9 GiB; the authors trained on a 32 GB GPU
+    (`documentation/competitions/Toothfairy3/readme.md`). Other sae_tooth runs (ResEnc M 10.5 h, U-Mamba2 at
+    128x256x256 for 500 rounds 35 h) are smaller recipes, not V2V2R's.

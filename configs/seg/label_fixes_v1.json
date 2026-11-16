@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "date": "2026-11-16",
+  "about": "Corrections to ToothFairy3 manual labels, applied to a copy (raw files untouched). Found by partialref.baseline.seg_train_check (job 617320, results/seg/20261112-2202-c9ad590-seg-train-check-617320), checked visually and by neighbouring labels, then by three independent reviewers (2026-11-12/16; all agreed on every fix below). Scope 'train' = segmentation training data (pulps are merged into one class there, so pulp-only fixes are not needed); scope 'module' = our per-tooth module, which reads each tooth's own pulp. Ops run in the listed order. expect_voxels = voxels the op must change (stops on any mismatch, so a fix never applies to the wrong file). Components use 26-connectivity; 'touching' = shares a face/edge/corner with the other label.",
+  "exclude": {
+    "S0015": "jaw labels unusable: much of the lower jaw is labelled upper jaw (2); decided by Shivam (DECISIONS 2026-11-11, re-confirmed 2026-11-16)"
+  },
+  "fixes": {
+    "P061": [
+      {"op": "component_to", "label": 27, "touching": 37, "to": 37, "merge": true, "scope": ["train", "module"], "expect_voxels": 20468,
+       "why": "crown of lower 37 labelled 27 (roots labelled 37); the other 27 piece is the real upper 27"},
+      {"op": "component_to", "label": 127, "touching": 137, "to": 137, "merge": true, "scope": ["module"], "expect_voxels": 866,
+       "why": "pulp of that lower 37 crown labelled 127"},
+      {"op": "swap", "a": 26, "b": 36, "scope": ["train", "module"], "expect_voxels": [39448, 18650],
+       "why": "'26' lies in the lower arch between 35 and 37, '36' in the upper arch between 25 and 27"},
+      {"op": "swap", "a": 126, "b": 136, "scope": ["module"], "expect_voxels": [2254, 363], "why": "their pulps"}
+    ],
+    "P192": [
+      {"op": "swap", "a": 31, "b": 41, "scope": ["train", "module"], "expect_voxels": [3864, 2878],
+       "why": "lower incisors on the wrong side; canals 3/4 and 103/104 follow the dataset convention"},
+      {"op": "swap", "a": 32, "b": 42, "scope": ["train", "module"], "expect_voxels": [4656, 4612], "why": "as above"},
+      {"op": "swap", "a": 131, "b": 141, "scope": ["module"], "expect_voxels": [957, 718], "why": "their pulps"},
+      {"op": "swap", "a": 132, "b": 142, "scope": ["module"], "expect_voxels": [323, 236], "why": "their pulps"}
+    ],
+    "S0038": [
+      {"op": "relabel", "label": 22, "to": 32, "scope": ["train", "module"], "expect_voxels": 3463,
+       "why": "'22' is a lower incisor in the lower jaw between 33 and 31 (32 absent)"},
+      {"op": "relabel", "label": 122, "to": 132, "scope": ["module"], "expect_voxels": 75, "why": "its pulp"},
+      {"op": "component_to", "label": 142, "touching": 12, "to": 112, "scope": ["module"], "expect_voxels": 90,
+       "why": "a piece of pulp '142' lies inside upper tooth 12 (112 absent)"}
+    ],
+    "P041": [
+      {"op": "relabel", "label": 28, "to": 18, "scope": ["train", "module"], "expect_voxels": 1918,
+       "why": "'28' is an upper molar crown on the Q1 side directly behind 17 (18 absent)"}
+    ],
+    "P248": [
+      {"op": "relabel", "label": 27, "to": 17, "scope": ["train", "module"], "expect_voxels": 6490,
+       "why": "'27' lies on the Q1 side behind 15; quadrant certain, 16 vs 17 uncertain (needs a dentist); 17 = best estimate"}
+    ],
+    "P368": [
+      {"op": "relabel", "label": 35, "to": 25, "scope": ["train", "module"], "expect_voxels": 324,
+       "why": "'35' is an upper root piece in upper jaw 2 on the Q2 side; quadrant certain, 24 vs 25 uncertain; 25 = best estimate"}
+    ],
+    "P450": [
+      {"op": "relabel", "label": 48, "to": 33, "merge": true, "scope": ["train", "module"], "expect_voxels": 1072,
+       "why": "'48' continues straight up from 33's root (same tooth); no 48 elsewhere"}
+    ],
+    "P105": [
+      {"op": "relabel", "label": 46, "to": 16, "merge": true, "scope": ["train", "module"], "expect_voxels": 953,
+       "why": "thin piece at the top edge around the end of upper 16; no lower 46 exists"},
+      {"op": "relabel", "label": 47, "to": 17, "merge": true, "scope": ["train", "module"], "expect_voxels": 2446,
+       "why": "as above for 17"}
+    ],
+    "S0002": [
+      {"op": "relabel", "label": 2, "to": 0, "scope": ["train", "module"], "expect_voxels": 9768,
+       "why": "'upper jaw' label is on the hyoid bone"}
+    ],
+    "S0004": [
+      {"op": "relabel", "label": 2, "to": 0, "scope": ["train", "module"], "expect_voxels": 4738,
+       "why": "'upper jaw' label is on a thin bony rod beside the airway (styloid/hyoid), not maxilla"}
+    ],
+    "S0034": [
+      {"op": "relabel", "label": 2, "to": 0, "scope": ["train", "module"], "expect_voxels": 28324,
+       "why": "'upper jaw' label is on soft tissue near the pharynx, not maxilla"}
+    ]
+  }
+}
