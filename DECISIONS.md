@@ -1006,3 +1006,14 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   run `results/perception/20261112-1027-8f55a26-tooth-classifier-dense`): caries 124 in 74 scans (fold 0: 8),
   periapical lesion 90 in 61 scans; centre S 9 / 3. At that rate the test set holds about 30 / 20-25 such teeth, so
   test-set results for these two types carry wide intervals.
+- **Per-tooth module reference result = run on the corrected labels (2026-11-17).** Features
+  `results/perception/20261117-1210-ba799a2-tooth-features-dense-fixed`, classifier
+  `results/perception/20261117-1211-ba799a2-tooth-classifier-dense-fixed` (job 620126; module-scope label fixes of
+  `configs/seg/label_fixes_v1.json`). Versus 12 Nov (basic+histogram, all development teeth): AUC filling 0.866 ->
+  0.869, crown/bridge/post 0.893 -> 0.895, root canal filling 0.980 -> 0.981, periapical 0.855 -> 0.859, caries 0.784
+  -> 0.785; module sensitivity at the second dentist's false-positive rate moves by <= 0.03 (periapical 0.197 ->
+  0.224, caries 0.138 -> 0.122); conclusions unchanged; 3 fewer teeth (merges in P105, P450). Unfixed scans were not
+  identical at first: the Gaussian mixture of the per-scan levels depended on the thread count (8 threads on 12 Nov,
+  1 now; lvl_low up to 2.7 % apart). Now pinned to one thread (98361d0); a rerun with 8 cores reproduces the
+  reference bit for bit (job 620129, `results/perception/20261117-1220-98361d0-tooth-features-dense-fixed-repro`).
+  The 12 Nov screening comparison (VLM vs module) stays on the 12 Nov predictions.
