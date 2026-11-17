@@ -1000,3 +1000,9 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   1,170 keys/shapes = released file; after loading every non-seg tensor equals the file; norm weights trained).
   Length: 200 rounds as in their recipe (option A; ~38k steps on 382 scans vs their ~81k on ~810 scans; Shivam,
   2026-11-17), not matched steps.
+- **Step 2 uses candidate 2 only: features from the retrained segmentation network (Shivam, 2026-11-17).** Candidate 3
+  (a 2D image model on tooth slices) is not pursued. Step 2 therefore starts after the segmentation retraining (the
+  released network saw our test scans). Positive teeth across the five development folds (labels from reports,
+  run `results/perception/20261112-1027-8f55a26-tooth-classifier-dense`): caries 124 in 74 scans (fold 0: 8),
+  periapical lesion 90 in 61 scans; centre S 9 / 3. At that rate the test set holds about 30 / 20-25 such teeth, so
+  test-set results for these two types carry wide intervals.

@@ -49,6 +49,7 @@ from scipy import ndimage, stats
 from sklearn.mixture import GaussianMixture
 
 from partialref.audit.tf3_link import tf3_paths
+from partialref.baseline.label_fixes import apply_fixes, load_fixes
 from partialref.provenance import make_run_id, write_provenance
 
 TEETH = [q * 10 + i for q in (1, 2, 3, 4) for i in range(1, 9)]
@@ -214,12 +215,16 @@ def tooth_row(I: np.ndarray, L: np.ndarray, fdi: int, spacing: np.ndarray, scan_
     }
 
 
-def case_rows(case_id: str, tf3_dir: str) -> list[dict]:
+def case_rows(case_id: str, tf3_dir: str, fixes: dict | None = None) -> list[dict]:
+    """fixes: label fix table (`partialref.baseline.label_fixes`); its scope "module" ops are applied to this scan's
+    labels (tooth and pulp numbers, jaw labels) before any measurement. None = labels as stored."""
     try:
         img_p, lab_p = tf3_paths(case_id, Path(tf3_dir))
         img, lab = nib.load(str(img_p)), nib.load(str(lab_p))
         I = np.asarray(img.dataobj, dtype=np.float32)
         L = np.asarray(lab.dataobj).astype(np.int16)
+        if fixes is not None and case_id in fixes["fixes"]:
+            L, _ = apply_fixes(L, case_id, fixes, "module")
         if I.shape != L.shape:
             return [{"case_id": case_id, "error": "shape_mismatch"}]
         spacing = np.asarray(lab.header.get_zooms()[:3], dtype=float)
@@ -254,13 +259,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--results-dir", default=Path("results"), type=Path)
     ap.add_argument("--tag", default="tooth-features")
+    ap.add_argument("--fixes", type=Path, help="label fix table (configs/seg/label_fixes_v1.json): its module-scope "
+                    "corrections are applied before measuring; its excluded scans are left out")
     a = ap.parse_args(argv)
+    fixes = load_fixes(a.fixes) if a.fixes else None
     sp = pd.read_csv(a.splits)
-    cases = sorted(sp.loc[(sp["role"] == a.role) & ~sp["case_id"].isin(a.exclude.split(",")), "case_id"])
+    excl = set(a.exclude.split(",")) | (set(fixes.get("exclude", {})) if fixes else set())
+    cases = sorted(sp.loc[(sp["role"] == a.role) & ~sp["case_id"].isin(excl), "case_id"])
+    if fixes is not None and set(fixes["fixes"]) - set(cases):
+        raise SystemExit(f"fixes for scans outside this run: {sorted(set(fixes['fixes']) - set(cases))}")
     if a.limit:
         cases = cases[: a.limit]
     with ProcessPoolExecutor(a.workers) as ex:
-        rows = [r for rs in ex.map(case_rows, cases, [str(a.tf3_dir)] * len(cases)) for r in rs]
+        rows = [r for rs in ex.map(case_rows, cases, [str(a.tf3_dir)] * len(cases), [fixes] * len(cases)) for r in rs]
     df = pd.DataFrame(rows)
     run_id = make_run_id(a.tag + (f"-limit{a.limit}" if a.limit else ""))
     out = a.results_dir / "perception" / run_id
@@ -274,7 +285,8 @@ def main(argv: list[str] | None = None) -> int:
             "share_scans_without_saturation": float((teeth.drop_duplicates("case_id")["n_saturated"] < 100).mean()) if len(teeth) else None}
     (out / "summary.json").write_text(json.dumps(summ, indent=2))
     write_provenance(out, extra={**summ, "splits": str(a.splits), "tf3_dir": str(a.tf3_dir), "role": a.role,
-                                 "excluded": a.exclude})
+                                 "excluded": sorted(excl), "fixes": str(a.fixes) if a.fixes else None,
+                                 "fixed_cases": sorted(fixes["fixes"]) if fixes else []})
     print(json.dumps(summ, indent=2))
     return 0
 
