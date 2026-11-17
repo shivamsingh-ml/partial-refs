@@ -973,3 +973,12 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
     (A16, 14.6 GiB) ran out of memory in the first forward pass at 13.9 GiB; the authors trained on a 32 GB GPU
     (`documentation/competitions/Toothfairy3/readme.md`). Other sae_tooth runs (ResEnc M 10.5 h, U-Mamba2 at
     128x256x256 for 500 rounds 35 h) are smaller recipes, not V2V2R's.
+- **Split v1 is the standard ToothFairy3 split for future studies (Shivam, 2026-11-17).** Covers all 532 ToothFairy3
+  scans (420 development + 5 TF3-only in development, 107 locked test; centre A external). Balance checked with
+  `partialref.data.split_balance` (reviewed; run `results/splits/20261117-1045-960f355-split-balance`): test vs development negligible (|SMD|
+  < 0.05) on jaw coverage, teeth, upper-jaw label, root tips cut by the field of view, bridges, scan height; small
+  excess in the test set for implants (19.6 vs 12.6 %, SMD 0.19, permutation p 0.10), crowns (41.1 vs 35.0 %, SMD
+  0.13) and crowns cut by the field of view (15.0 vs 10.7 %, SMD 0.13). Limitations: these small excesses; only 13
+  full-arch F scans in the test set (sae_tooth used an F-only test of 21 for full-arch questions; such questions use
+  test ∩ F here). Not re-split: module, screening and report evaluation already use v1, and cases are never moved.
+  Documented in `configs/splits/v1/README.md`.
