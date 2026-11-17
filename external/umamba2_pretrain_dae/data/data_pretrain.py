@@ -118,11 +118,15 @@ class CustomDataset(Dataset):
 
 class MyTransform(Transform):
     def __init__(self, args):
+        # partial-refs (2026-11-17): clip and normalisation = nnU-Net CTNormalization values of OUR plans
+        # (fingerprint of the 424 training scans, results/seg/20261117-1100-4b3ac2a-seg-prep-plans-620071), so that
+        # pretraining and segmentation training see the same intensities. Original: clip(-997., 3558.), 809.5, 1014.369
+        # (computed on data including our test scans, and not equal to their own nnU-Net plans: 3608 / 810.59 / 1020.90).
         self.transform_tf3 = Compose(
             [
                 EnsureChannelFirstd(keys=["image"]),
-                Lambdad(keys=["image"], func=lambda img: clip(img, -997., 3558.)),
-                NormalizeIntensityd(keys=["image"], subtrahend=809.5, divisor=1014.369),
+                Lambdad(keys=["image"], func=lambda img: clip(img, -996.9993286132812, 3608.0)),
+                NormalizeIntensityd(keys=["image"], subtrahend=812.406494140625, divisor=1019.0814819335938),
             ]
         )
         self.transform_sdt_int = Compose(
