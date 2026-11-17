@@ -193,31 +193,20 @@ def collate_fn(batch):
 
 
 def build_loader_simmim(args):
-    base_dir = '~/datasets' # update your base directory here
+    # partial-refs (2026-11-17): ToothFairy3 list = our segmentation training scans only (no test scans), written by
+    # partialref.baseline.pretrain_datalist with absolute image paths; passed in PR_DAE_DATALIST. SD-Tooth is not used
+    # (not available to us): its lists are empty. Original: base_dir '~/datasets', tf3_splits './dataset_tf3.json'.
+    base_dir = ''
 
-    tf3_splits = './dataset_tf3.json' # 0.3mm spacing
-
-    sdt_int_splits = './dataset_sdt_integrity_labeled.json' # 0.25-0.3mm
-    sdt_int_ul_splits = './dataset_sdt_integrity_unlabeled.json'
-
-    sdt_roi_splits = './dataset_sdt_roi_labeled.json'  # 0.25-0.3mm
-    sdt_roi_ul_splits = './dataset_sdt_roi_unlabeled.json'
+    tf3_splits = os.environ['PR_DAE_DATALIST'] # 0.3mm spacing
 
     tf3_datalist = load_decathlon_datalist(tf3_splits, False, "training", base_dir=base_dir)
     print("Dataset ToothFairy3: number of data: {}".format(len(tf3_datalist)))
-    sdt_int_datalist = load_decathlon_datalist(sdt_int_splits, False, "training", base_dir=base_dir)
-    sdt_int_ul_datalist = load_decathlon_datalist(sdt_int_ul_splits, False, "training", base_dir=base_dir)
-    print("Dataset SD-Tooth Integrity: number of data: {}".format(len(sdt_int_datalist) + len(sdt_int_ul_datalist)))
-    sdt_roi_datalist = load_decathlon_datalist(sdt_roi_splits, False, "training", base_dir=base_dir)
-    sdt_roi_ul_datalist = load_decathlon_datalist(sdt_roi_ul_splits, False, "training", base_dir=base_dir)
-    print("Dataset SD-Tooth ROI: number of data: {}".format(len(sdt_roi_datalist) + len(sdt_roi_ul_datalist)))
-
+    sdt_int_datalist, sdt_int_ul_datalist, sdt_roi_datalist, sdt_roi_ul_datalist = [], [], [], []
+    print("Dataset SD-Tooth: not used")
 
     tf3_vallist = load_decathlon_datalist(tf3_splits, False, "validation", base_dir=base_dir)
-    sdt_int_vallist = load_decathlon_datalist(sdt_int_splits, False, "validation", base_dir=base_dir)
-    sdt_int_ul_vallist = load_decathlon_datalist(sdt_int_ul_splits, False, "validation", base_dir=base_dir)
-    sdt_roi_vallist = load_decathlon_datalist(sdt_roi_splits, False, "validation", base_dir=base_dir)
-    sdt_roi_ul_vallist = load_decathlon_datalist(sdt_roi_ul_splits, False, "validation", base_dir=base_dir)
+    sdt_int_vallist, sdt_int_ul_vallist, sdt_roi_vallist, sdt_roi_ul_vallist = [], [], [], []
 
     for dl, cls in zip([tf3_datalist, sdt_int_datalist, sdt_int_ul_datalist, sdt_roi_datalist, sdt_roi_ul_datalist, ],
                        ['tf3', 'sdt_int', 'sdt_int_ul', 'sdt_roi', 'sdt_roi_ul',]):
