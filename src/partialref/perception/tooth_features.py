@@ -47,6 +47,7 @@ import numpy as np
 import pandas as pd
 from scipy import ndimage, stats
 from sklearn.mixture import GaussianMixture
+from threadpoolctl import threadpool_limits
 
 from partialref.audit.tf3_link import tf3_paths
 from partialref.baseline.label_fixes import apply_fixes, load_fixes
@@ -85,7 +86,11 @@ def scan_levels(tooth_vals: np.ndarray, scan_max: float, seed: int = 0) -> dict[
         return out | {"lvl_low": np.nan, "lvl_dentin": np.nan, "lvl_enamel": np.nan}
     rng = np.random.default_rng(seed)
     s = rng.choice(u, min(LEVEL_SAMPLE, len(u)), replace=False).reshape(-1, 1)
-    gm = GaussianMixture(3, random_state=seed).fit(s)
+    # one thread: the k-means start of the mixture depends on the thread count (2026-11-17: 12 Nov run with 8
+    # threads vs 17 Nov with 1 thread moved lvl_low by up to 2.7 % in 323 scans); pinned so results do not depend
+    # on the job's CPU settings
+    with threadpool_limits(limits=1):
+        gm = GaussianMixture(3, random_state=seed).fit(s)
     means, w = gm.means_.ravel(), gm.weights_
     dentin = float(means[np.argmax(w)])
     low = float(means.min())
