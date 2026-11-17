@@ -982,3 +982,6 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   full-arch F scans in the test set (sae_tooth used an F-only test of 21 for full-arch questions; such questions use
   test ∩ F here). Not re-split: module, screening and report evaluation already use v1, and cases are never moved.
   Documented in `configs/splits/v1/README.md`.
+- **Segmentation (re)training runs on the cluster A100, not on a 16/20 GB GPU (Shivam, 2026-11-17).** V2V2R's recipe
+  does not fit in 16 GB (job 617335); the 20 GB test (job 620060) was cancelled before it started. Recipe unchanged
+  (160x288x288 crop, batch 1, accumulation 2, 1,500 rounds; ~10 days as four 3-day jobs that resume).
