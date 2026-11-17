@@ -985,3 +985,18 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
 - **Segmentation (re)training runs on the cluster A100, not on a 16/20 GB GPU (Shivam, 2026-11-17).** V2V2R's recipe
   does not fit in 16 GB (job 617335); the 20 GB test (job 620060) was cancelled before it started. Recipe unchanged
   (160x288x288 crop, batch 1, accumulation 2, 1,500 rounds; ~10 days as four 3-day jobs that resume).
+- **Self-supervised pretraining repeated on our training scans (Shivam, 2026-11-16/17).** U-Mamba2's DAE code imported
+  verbatim (`external/umamba2_pretrain_dae`, commit 9e833ac), then three in-place changes, each its own commit: scan
+  list = our 424 Dataset713 scans (382 training + 42 validation, every 10th per centre; `partialref.baseline.
+  pretrain_datalist`), SD-Tooth not used; intensity clip/normalisation = our nnU-Net plans' values (bit-identical to
+  nnU-Net CTNormalization on a real scan, reviewers 2 and 3); timm >= 0.5 rename `t_mul` -> `cycle_mul` (same
+  schedule, checked against timm 0.4.12's formula). Environment `~/envs/pr_dae` (venv on umamba2, `env/pr_dae.lock.txt`;
+  MONAI 1.5.1: their code needs MetaTensor, so their pinned monai 0.8.0 is stale). Three independent reviews: no
+  leakage, orientation identical to nnU-Net's reader, conversion keys/shapes identical to the released file.
+  Decisions: final weights = the LAST-round checkpoint (their best-validation pick uses a noisy loss on random crops,
+  noise and masks; which one they released cannot be told); 80 GB A100 (float32, batch 2 at 160x288x288 estimated at
+  50-55 GB; changing batch or precision would depart from their recipe); resubmission passes `--resume` only when a
+  checkpoint exists (their `auto_resume` is unused). Converted with `partialref.baseline.dae_to_nnunet` (strict:
+  1,170 keys/shapes = released file; after loading every non-seg tensor equals the file; norm weights trained).
+  Length: 200 rounds as in their recipe (option A; ~38k steps on 382 scans vs their ~81k on ~810 scans; Shivam,
+  2026-11-17), not matched steps.
