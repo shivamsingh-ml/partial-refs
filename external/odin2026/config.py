@@ -58,6 +58,10 @@ NNUNET_FOLDS = ("all",)
 RESAMPLE_ON_CPU = _flag("RESAMPLE_ON_CPU", "1")
 # Test-time mirroring augmentation. Off = faster, slightly lower Dice.
 USE_MIRRORING = _flag("USE_TTA", "1")
+# Post-processing minimum piece sizes (task1_inference.BasePredictor.cls_vol) are in voxels. DEFAULT OFF = as
+# submitted. On: read them as voxels at 0.3 mm (the ToothFairy3 grid) and convert to the scan's voxel size, so a
+# piece is judged by its physical volume (audit S5; matters only for scans not at 0.3 mm, i.e. centre A).
+SEG_MIN_SIZE_MM3 = _flag("SEG_MIN_SIZE_MM3", "0")
 
 
 # ── VLM report arm (CBCT_VQA pipeline) ────────────────────────────────────

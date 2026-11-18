@@ -395,7 +395,12 @@ class BasePredictor(CustomPredictor):
 
         super().__init__(*args, **kwargs)
 
-    def postprocessing(self, segmentation):
+    def postprocessing(self, segmentation, spacing=None, size_in_mm3=False):
+        # audit S5: every deleted piece is recorded (label, voxels, mm3) in self.removed and printed once;
+        # size_in_mm3 scales the voxel thresholds from 0.3 mm to the scan's voxel size (default off = as submitted)
+        self.removed = []
+        vox_mm3 = float(np.prod(spacing)) if spacing is not None else None
+        scale = (0.3 ** 3) / vox_mm3 if (size_in_mm3 and vox_mm3) else 1.0
         segmentation = np.ascontiguousarray(self.orig_mapping[segmentation])
         if self.simple_postprocess:
             for cls_id, vol_thres in self.cls_vol.items():
@@ -425,11 +430,13 @@ class BasePredictor(CustomPredictor):
             labels_out = cc3d.connected_components(segmentation, connectivity=18)
             for _, _mask in cc3d.each(labels_out, binary=True, in_place=True):
                 cls_id = segmentation[_mask][0]
-                vol_thres = self.cls_vol.get(cls_id, 0)
+                vol_thres = self.cls_vol.get(cls_id, 0) * scale
                 if vol_thres > 0:
                     pred_vol = _mask.sum()
                     if pred_vol < vol_thres:
                         segmentation[_mask] = 0
+                        self.removed.append({"label": int(cls_id), "voxels": int(pred_vol),
+                                             "mm3": round(int(pred_vol) * vox_mm3, 2) if vox_mm3 else None})
                         if self.verbose:
                             print('removed cc label', cls_id, 'with predicted volume', pred_vol)
                         continue
@@ -443,15 +450,16 @@ class BasePredictor(CustomPredictor):
                 #         if self.verbose:
                 #             print('warning fp pulp with surrounding id', tooth_id)
                 #         segmentation[_mask] = tooth_id  # fp
+        print(f"=+=   seg.removed {json.dumps({'size_in_mm3': bool(size_in_mm3), 'pieces': self.removed})}", flush=True)
         return segmentation
 
 
-def predict_semseg(im, prop, base_predictor):
+def predict_semseg(im, prop, base_predictor, size_in_mm3=False):
     semseg_pred = base_predictor.predict_single_cbct_npy_array(
         im, prop
     )
     _t3 = _time.time()
-    semseg_pred = base_predictor.postprocessing(semseg_pred)
+    semseg_pred = base_predictor.postprocessing(semseg_pred, prop.get('spacing'), size_in_mm3)
     print(f"=+=   seg.postprocess      {_time.time() - _t3:8.1f}s", flush=True)
     gc.collect()
     torch.cuda.empty_cache()

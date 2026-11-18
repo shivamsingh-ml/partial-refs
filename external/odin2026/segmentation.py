@@ -32,7 +32,7 @@ import numpy as np
 import SimpleITK as sitk
 import torch
 
-from config import NNUNET_MODEL_FOLDER, NNUNET_CHECKPOINT, NNUNET_FOLDS, USE_MIRRORING
+from config import NNUNET_MODEL_FOLDER, NNUNET_CHECKPOINT, NNUNET_FOLDS, USE_MIRRORING, SEG_MIN_SIZE_MM3
 from task1_inference import BasePredictor, predict_semseg
 
 # LR label-swap pairs, copied verbatim from run_inference.py / the trainer.
@@ -101,7 +101,7 @@ def run_segmentation(cbct: sitk.Image) -> sitk.Image:
         if fax:
             im = np.ascontiguousarray(np.flip(im, axis=fax))       # -> training L/R
 
-        seg = predict_semseg(im, prop, predictor)
+        seg = predict_semseg(im, prop, predictor, size_in_mm3=SEG_MIN_SIZE_MM3)
         if fax:
             seg = np.ascontiguousarray(np.flip(seg, axis=fax))     # -> back to input
 
