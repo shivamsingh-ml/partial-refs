@@ -58,3 +58,11 @@ def test_case_features_root_tip_and_condyle(tmp_path):
     assert rowp["label_source"] == "umamba2_foldall_pred"
     assert {r["fdi"]: r for r in teethp}[16]["root_tip_cut"] is True
     assert rowp["mandible_right_touches_sup"] is True
+
+
+def test_pred_dir_refused_for_pfs_s8(tmp_path):
+    """Audit S8: a predicted-mask folder is refused for P/F/S cases before anything is read (synthetic)."""
+    import pytest
+    from partialref.audit.visibility_features import case_features
+    with pytest.raises(ValueError, match="S8"):
+        case_features("P001", str(tmp_path / "v.nii.gz"), str(tmp_path), pred_dir=str(tmp_path))

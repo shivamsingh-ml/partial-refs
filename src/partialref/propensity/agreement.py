@@ -70,6 +70,23 @@ def _mirror_tooth(t: str) -> str:
     return MIRROR_Q[t[0]] + t[1]
 
 
+# Audit S8: the P/F/S mirroring below is right for ToothFairy3 manual masks only. Predicted masks of P/F/S scans
+# from V2V2R's run_segmentation are already in report convention (and use another label scheme), so mirroring
+# them by centre letter would swap sides twice. Until such masks are needed they are refused, not mirrored.
+MANUAL_SOURCE = "tf3_manual"
+MANUAL_ONLY_CENTRES = "PFS"
+
+
+def check_label_sources(cf: pd.DataFrame) -> None:
+    """Raise if a P/F/S case in case_features comes from anything but the manual ToothFairy3 masks (S8)."""
+    if "label_source" not in cf:
+        raise ValueError("case_features has no label_source column: re-run partialref.audit.visibility_features")
+    bad = cf[cf["case_id"].str[0].isin(list(MANUAL_ONLY_CENTRES)) & (cf["label_source"] != MANUAL_SOURCE)]
+    if len(bad):
+        raise ValueError(f"predicted masks for P/F/S cases are not supported (audit S8: their left/right convention "
+                         f"differs from the manual masks): {sorted(bad['case_id'])[:10]}")
+
+
 UPPER_BONE_MIN_MM3 = 2000.0
 UPPER_GAP_RULES = ("bone", "teeth_or_bone")
 
@@ -84,6 +101,7 @@ def load_visibility(vis_dirs: list[Path], mirror_centres: str = "", swap_side_ce
     out: dict[str, dict] = {}
     for d in vis_dirs:
         cf = pd.read_parquet(d / "case_features.parquet")
+        check_label_sources(cf)
         tf = pd.read_parquet(d / "tooth_features.parquet")
         if tf.empty or "present" not in tf:
             tf = pd.DataFrame(columns=["case_id", "fdi", "present", "root_tip_cut"])

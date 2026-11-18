@@ -62,13 +62,13 @@ def test_reader_without_findings_counts():
 def test_load_visibility(tmp_path):
     d = tmp_path / "vis"
     d.mkdir()
-    pd.DataFrame([{"case_id": "P001", "label_found": True, "maxilla_vox": 0, "mandible_vox": 100,
+    pd.DataFrame([{"case_id": "P001", "label_source": "tf3_manual", "label_found": True, "maxilla_vox": 0, "mandible_vox": 100,
                    "canal_left_vox": 5, "canal_right_vox": 0, "sinus_left_vox": 0, "sinus_right_vox": np.nan,
                    "mandible_left_touches_sup": True, "mandible_right_touches_sup": False,
                    "mandible_left_touches_post": False, "mandible_right_touches_post": False,
                    "q1_teeth_touch_lateral_or_post": True, "q2_teeth_touch_lateral_or_post": False,
                    "q1_n_teeth": 1, "q2_n_teeth": 2},
-                  {"case_id": "P002", "label_found": False}]).to_parquet(d / "case_features.parquet")
+                  {"case_id": "P002", "label_source": "tf3_manual", "label_found": False}]).to_parquet(d / "case_features.parquet")
     pd.DataFrame([{"case_id": "P001", "fdi": 16, "present": True, "root_tip_cut": True},
                   {"case_id": "P001", "fdi": 36, "present": True, "root_tip_cut": False},
                   {"case_id": "P001", "fdi": 37, "present": False, "root_tip_cut": None}]).to_parquet(d / "tooth_features.parquet")
@@ -113,7 +113,7 @@ def test_slot_assessable_missing_tooth_rule():
 def test_condyle_needs_both_halves_inside(tmp_path):
     d = tmp_path / "v"
     d.mkdir()
-    base = {"label_found": True, "mandible_vox": 10, "mandible_left_touches_sup": False,
+    base = {"label_source": "tf3_manual", "label_found": True, "mandible_vox": 10, "mandible_left_touches_sup": False,
             "mandible_right_touches_sup": False}
     pd.DataFrame([{**base, "case_id": "A1", "mandible_left_touches_post": False, "mandible_right_touches_post": False},
                   {**base, "case_id": "A2", "mandible_left_touches_post": True, "mandible_right_touches_post": False}]
@@ -159,7 +159,7 @@ def test_empty_quadrant_needs_whole_jaw_inside(tmp_path):
     """Review #4: a quadrant without mask teeth is not assessable just because no tooth touches an edge."""
     d = tmp_path / "v"
     d.mkdir()
-    base = {"label_found": True, "mandible_vox": 100, "maxilla_vox": 0, "q3_n_teeth": 7, "q4_n_teeth": 0,
+    base = {"label_source": "tf3_manual", "label_found": True, "mandible_vox": 100, "maxilla_vox": 0, "q3_n_teeth": 7, "q4_n_teeth": 0,
             "q3_teeth_touch_lateral_or_post": False, "q4_teeth_touch_lateral_or_post": False}
     inside = {f"mandible_{h}_touches_{f}": False for h in ("left", "right") for f in ("lateral", "post")}
     pd.DataFrame([{**base, "case_id": "P001"},                                   # jaw-half flags missing
@@ -220,7 +220,7 @@ def test_upper_gap_needs_upper_jaw_bone():
 
 
 def test_load_visibility_sets_upper_bone(tmp_path):
-    cf = pd.DataFrame({"case_id": ["P001", "P002", "P003"], "label_found": [True, True, True],
+    cf = pd.DataFrame({"case_id": ["P001", "P002", "P003"], "label_source": "tf3_manual", "label_found": [True, True, True],
                        "maxilla_vox": [0, 50000, 900], "maxilla_mm3": [0.0, 2500.0, 40.0],
                        "mandible_vox": [9000, 9000, 9000]})
     tf = pd.DataFrame({"case_id": ["P001", "P002", "P003"], "fdi": [17, 17, 27], "present": [True, True, True],
@@ -248,3 +248,18 @@ def test_build_instances_upper_gap_rule_both_paths():
     assert not (new["slot"] == "16").any() and info["mentions_on_invisible_slots"] == {"ToothAbsence": 1}
     assert old.loc[old.slot == "16", ["n", "k"]].values.tolist() == [[2, 1]]
     assert set(new.slot) == set(old.slot) - {s for s in old.slot if s[0] in "12" and s not in {"17", "27"}}
+
+
+def test_label_source_guard_s8():
+    """Audit S8: P/F/S cases must come from the manual masks; centre A predictions pass (synthetic)."""
+    import pandas as pd
+    import pytest
+    from partialref.propensity.agreement import check_label_sources
+    ok = pd.DataFrame({"case_id": ["P001", "F002", "A003"],
+                       "label_source": ["tf3_manual", "tf3_manual", "umamba2_foldall_pred"]})
+    check_label_sources(ok)
+    bad = pd.DataFrame({"case_id": ["P001", "S0002"], "label_source": ["tf3_manual", "umamba2_foldall_pred"]})
+    with pytest.raises(ValueError, match="S0002"):
+        check_label_sources(bad)
+    with pytest.raises(ValueError, match="label_source"):
+        check_label_sources(pd.DataFrame({"case_id": ["P001"]}))

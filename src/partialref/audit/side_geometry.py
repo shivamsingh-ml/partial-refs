@@ -28,6 +28,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from partialref.propensity.agreement import check_label_sources
 from partialref.provenance import make_run_id, write_provenance
 
 # (structure pair, mask quadrant holding the reports' LEFT teeth, ... RIGHT teeth, jaw), per tooth convention:
@@ -97,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tag", default="side-geometry")
     a = ap.parse_args(argv)
     cf = pd.read_parquet(a.vis / "case_features.parquet")
+    check_label_sources(cf)                                   # audit S8: P/F/S must be manual masks
     tf = pd.read_parquet(a.vis / "tooth_features.parquet")
     if "cx" not in tf:
         raise SystemExit("tooth_features has no 'cx' column: re-run visibility_features first")

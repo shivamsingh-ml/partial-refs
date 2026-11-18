@@ -90,6 +90,9 @@ def case_features(case_id: str, tf4_path: str, tf3_dir: str,
                   pred_dir: str | None = None) -> tuple[dict, list[dict]]:
     """Hand-drawn TF3 labels (flipped onto the TF4 grid) or, with ``pred_dir``, predicted masks that
     are already on the TF4 grid in TF3 label ids (centre A; merged pulp = 199, ignored here)."""
+    if pred_dir and case_id[0] in "PFS":
+        raise ValueError(f"{case_id}: predicted masks for P/F/S are not supported (audit S8: their left/right "
+                         "convention and label scheme differ from the manual masks)")
     if pred_dir:
         lab_p, source, flip = Path(pred_dir) / f"{case_id}.nii.gz", "umamba2_foldall_pred", None
     else:
