@@ -33,17 +33,17 @@ VERIFY_ORIENTATION = _flag("VERIFY_ORIENTATION", "1")
 ORIENTATION_CHECK_FATAL = _flag("ORIENTATION_CHECK_FATAL", "0")
 
 # Segmentation label ids for upper (maxillary) vs lower (mandibular) structures.
-# From Dataset703 dataset.json (sequential anatomical labels, NOT FDI).
-# Jawbones (2 upper, 1 lower) are included so the check still fires on
-# edentulous arches where the tooth labels would be empty.
-UPPER_TOOTH_LABELS: tuple[int, ...] = (2,) + tuple(range(11, 27))   # Upper Jawbone + maxillary teeth 11-26
-LOWER_TOOTH_LABELS: tuple[int, ...] = (1,) + tuple(range(27, 43))   # Lower Jawbone + mandibular teeth 27-42
+# run_segmentation returns FDI numbers (task1_inference.orig_mapping: teeth 11-48, pulp 50, canals 51-53), so
+# these are FDI ids (audit S10; as submitted they were the sequential ids 11-26 / 27-42, which on the FDI mask
+# counted 27/28 as lower and 43-48 as neither). Jawbones (2 upper, 1 lower) are included so the check still
+# fires on edentulous arches where the tooth labels would be empty.
+UPPER_TOOTH_LABELS: tuple[int, ...] = (2,) + tuple(range(11, 19)) + tuple(range(21, 29))   # Upper Jawbone + FDI 11-28
+LOWER_TOOTH_LABELS: tuple[int, ...] = (1,) + tuple(range(31, 39)) + tuple(range(41, 49))   # Lower Jawbone + FDI 31-48
 
-# Remap model (sequential 0-46) labels into extract_facts's FDI scheme BEFORE
-# extraction. DEFAULT OFF, deliberately: the facts her VLM was trained on were
-# produced WITHOUT this remap (extract_facts read sequential masks as if FDI,
-# mislabeling 3 of 4 quadrants). Reproducing that exactly keeps train/inference
-# consistent. Turn ON only if her VLM is retrained on corrected FDI facts.
+# Remap sequential labels (0-46) to FDI before fact extraction. MUST stay off: the mask from run_segmentation is
+# already FDI (task1_inference.orig_mapping), so turning it on would map twice (audit S10; the original comment
+# here said the off setting reproduced a sequential-read-as-FDI quirk on purpose, which is not what the code
+# does). facts.py refuses to run with it on.
 REMAP_MODEL_TO_FDI = _flag("REMAP_MODEL_TO_FDI", "0")
 
 # ── Paths (model.tar.gz is mounted read-only at /opt/ml/model) ────────────

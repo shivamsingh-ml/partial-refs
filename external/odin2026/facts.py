@@ -1,17 +1,12 @@
 """
 Seam between segmentation and your fact extraction (extract_facts.py v3).
 
-IMPORTANT — label scheme. The model predicts Dataset703 *sequential* labels
-(0-46, per convert_tf3_singlepulp.py, which maps FDI->sequential at train time).
-extract_facts.py v3 internally assumes *FDI* numbering, so it mislabels 3 of 4
-quadrants when fed sequential masks.
-
-That mislabeling is NOT fixed here by default, on purpose: your standalone runs
-fed sequential predictions straight into extract_facts (jobs use
-`extract_facts.py -i "$EVAL/predictions"`), so the facts your collaborator's VLM
-was TRAINED on carry exactly this quirk. Reproducing it keeps train/inference
-consistent. The remap below exists for the day the VLM is retrained on corrected
-FDI facts — enable it with REMAP_MODEL_TO_FDI=1 then.
+Label scheme (corrected, audit S10). run_segmentation already returns FDI numbers (teeth 11-48, pulp 50,
+canals 51-53: task1_inference.orig_mapping), which is what extract_facts.py v3 expects, so the mask goes in
+unchanged. The original comment here said the model's sequential labels (0-46) reached extract_facts and that
+this quirk was kept on purpose; that is not what the code does. _MODEL_TO_FDI below would map FDI labels a
+second time, so REMAP_MODEL_TO_FDI=1 is refused. (Which scheme the facts of the VLM's training data used is a
+separate question.)
 
 extract() re-derives the S-I axis from anatomy, so the RPI mask goes in as-is.
 
@@ -45,7 +40,7 @@ def _remap_to_fdi(arr: np.ndarray) -> np.ndarray:
 
 def run_fact_extraction(cbct_rpi: sitk.Image, mask_rpi: sitk.Image) -> dict:
     arr = sitk.GetArrayFromImage(mask_rpi).astype(np.int16)   # (z, y, x)
-    if REMAP_MODEL_TO_FDI:
-        arr = _remap_to_fdi(arr)
+    if REMAP_MODEL_TO_FDI:   # audit S10: the mask is already FDI; remapping would map it twice
+        raise RuntimeError("REMAP_MODEL_TO_FDI=1 is not supported: run_segmentation already returns FDI labels")
     facts, phrases = extract(arr, mask_rpi.GetSpacing())       # spacing (x, y, z)
     return {"structured": facts, "phrases": phrases}
