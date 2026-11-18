@@ -60,9 +60,11 @@ ok = True
 for c, r in sorted(picks.items()):
     a = np.asarray(t({"image": r["image"]})["image"])[0]
     b = sitk.GetArrayFromImage(sitk.ReadImage(r["image"]))
-    same = a.shape == b.shape and np.array_equal(a.astype(np.float64), b.astype(np.float64))
+    # the files are float64; MONAI loads float32 (as nnU-Net preprocessing also does), so compare exactly in float32
+    same = a.dtype == np.float32 and a.shape == b.shape and np.array_equal(a, b.astype(np.float32))
     ok &= same
-    print(json.dumps({"case": r["case_id"], "monai_shape": list(a.shape), "sitk_shape": list(b.shape), "equal": bool(same)}))
+    print(json.dumps({"case": r["case_id"], "monai_shape": list(a.shape), "sitk_shape": list(b.shape),
+                      "monai_dtype": str(a.dtype), "file_dtype": str(b.dtype), "equal": bool(same)}))
 sys.exit(0 if ok else 1)
 PY
 fi
