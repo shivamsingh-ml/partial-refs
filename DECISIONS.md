@@ -1036,3 +1036,10 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   first). The per-tooth probabilities (audit S9) are computed in the same segmentation pass that writes the masks for the
   development, test and centre A scans (one pass instead of two, about 6 GPU-hours); S9's predictor change is
   therefore done before that pass.
+- **Segmentation training kept at 1,500 rounds (Shivam, 2026-11-19).** Question: does a moderate tooth score at round 55
+  mean fewer rounds would do? The log cannot show overfitting (fold "all" validates on the training scans). V2V2R's own
+  1,500-round log (`U-Mamba2/nnunet/nnUNet_results/Dataset703_ToothFairy3SinglePulp/<trainer>/fold_all/training_log_*`),
+  running pseudo-Dice averaged per stage: teeth 0.84 (~55) / 0.88 (~100) / 0.89 (~500) / 0.92 (~1,000) / 0.96 (~1,500);
+  canals+pulp 0.57 / 0.63 / 0.75 / 0.76 / 0.78; ours 0.89 for teeth at round 55. Kept: it is V2V2R's recipe (the network
+  serves the baseline and our system), the last rounds sharpen boundaries and small structures that the per-tooth
+  features use, and a shorter schedule could not be compared without looking at the test set. Cost about 255 GPU-hours.
