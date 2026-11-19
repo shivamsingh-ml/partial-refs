@@ -1017,3 +1017,14 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   1 now; lvl_low up to 2.7 % apart). Now pinned to one thread (98361d0); a rerun with 8 cores reproduces the
   reference bit for bit (job 620129, `results/perception/20261117-1220-98361d0-tooth-features-dense-fixed-repro`).
   The 12 Nov screening comparison (VLM vs module) stays on the 12 Nov predictions.
+- **Pretraining done; segmentation retraining started (2026-11-19).** Pretraining job 620892 (c1d4cb6) finished all 200
+  rounds in 19 h 11 min on an 80 GB A100; validation loss 0.345 (round 1) -> 0.082 (40) -> 0.072 (120) -> 0.070 (200),
+  flat at the end (`logs/pr-pretrain-dae-620892.out`). Last-round checkpoint `ckpt_epoch_0199.pth` converted to `data/pretrain/dae_v1/dae_nnunet_weights.pth`
+  (`partialref.baseline.dae_to_nnunet`, CPU srun): loaded into the network, 1,158 of 1,158 checked tensors equal to the
+  file, only the output layer (seg_layer) starts fresh (`data/pretrain/dae_v1/convert_check.txt`). 45-min check, job
+  621376 (b062e47, A100-PCIE-40GB, `logs/pr-seg-train-621376.out`): pretrained weights loaded; train loss 0.90 ->
+  0.32 -> 0.23, val loss 0.27 -> 0.24 -> 0.11 over rounds 0-2; round time 849 s (first) then 543 / 667 s, within the
+  original 500-670 s on the same GPU type; 32.7 of 40 GB. GPU idle in about half of the 1-min samples (CPU data
+  loading), left as is since round times match the original. Full training job 621380 started 2026-11-19 07:31
+  (b062e47, clean tree; `data/nnunet/results/Dataset713_TF3SinglePulpDev/`), 1,500 rounds, about 4 x 3-day jobs,
+  resubmitted with `MODE=full` (resumes from the latest checkpoint).
