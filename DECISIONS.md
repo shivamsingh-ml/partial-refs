@@ -1028,3 +1028,11 @@ Dated log of non-trivial choices (HANDOFF §0 rule 10). Format: date — decisio
   loading), left as is since round times match the original. Full training job 621380 started 2026-11-19 07:31
   (b062e47, clean tree; `data/nnunet/results/Dataset713_TF3SinglePulpDev/`), 1,500 rounds, about 4 x 3-day jobs,
   resubmitted with `MODE=full` (resumes from the latest checkpoint).
+- **Report model (LoRA) trained once on the development cases, not per fold; probabilities in the mask pass
+  (Shivam, 2026-11-19).** As in `reports/PAPER_PLAN.md` step 3; applies to both the V2V2R baseline and our system.
+  Replaces the per-fold retraining of HANDOFF §M3 (line 600) and the "per-fold LoRA adapters" of §M4; development-fold
+  results of the report models are therefore not out-of-fold, and the locked test set and centre A carry the
+  comparison. Reason: compute (one LoRA run instead of five per system; one run not yet measured, a one-run check comes
+  first). The per-tooth probabilities (audit S9) are computed in the same segmentation pass that writes the masks for the
+  development, test and centre A scans (one pass instead of two, about 6 GPU-hours); S9's predictor change is
+  therefore done before that pass.
